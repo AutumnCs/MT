@@ -1,0 +1,69 @@
+﻿# Flutter / Dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub/
+build/
+
+# Flutter generated platform artifacts
+android/.gradle/
+android/app/build/
+android/app/release/
+android/captures/
+ios/Pods/
+ios/Runner.xcworkspace/
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.podspec/
+macos/Flutter/ephemeral/
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# Android build outputs
+*.apk
+*.aab
+*.ap_
+*.so
+
+# Python / FastAPI
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local caches / temp
+.gradle-home/
+.tmp/
+temp/
+.cache/
+
+# IDE / editor
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs / crash dumps
+*.log
+hs_err_pid*
+replay_pid*
+
+# Legacy archived projects
+legacy/**/node_modules/
+legacy/**/.npm-cache/
+legacy/**/dist/
+legacy/**/.vite/
+legacy/**/unpackage/
+legacy/**/.hbuilderx/
+legacy/**/.runlogs/
+
+# Optional local-only VS Code files
+.vscode/*.code-workspace
