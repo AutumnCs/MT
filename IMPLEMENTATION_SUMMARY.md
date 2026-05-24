@@ -1,348 +1,220 @@
-# "取其精华" 实施总结
+# 实施总结：从规则推荐到路线规划
 
-## 核心理念
+## 1. 核心理念
 
-**不搬项目，只抽能力。**
+项目的目标不是做一个简单的 POI 推荐器，而是做一个能够理解自然语言、生成可执行路线、并支持二次修改的路线规划系统。
 
-保留现有 Flutter + FastAPI 主骨架，从 poi(1) 中提炼：
-- 字段设计
-- 排序思路
-- 调度逻辑
-- 路线优化方法
+最终采用的分层思路是：
 
----
-
-## 已完成的四层改进
-
-### 一、POI 字段设计（优先级1）✅
-
-#### 改进内容
-
-从 poi(1) 提炼了以下字段设计思路，扩充了 `backend/pois.json`：
-
-**新增核心字段：**
-- `district` - 区域（黄浦区、静安区等）
-- `sub_category` - 子类别
-- `business_hours` - 营业时间
-- `suitable_for` - 适合人群
-- `visit_duration` - 建议游览时长
-- `queue_level` - 排队等级（1-5）
-- `photo_score` - 拍照指数（1-5）
-- `date_score` - 约会指数（1-5）
-- `food_score` - 美食指数（1-5）
-- `culture_score` - 文化指数（1-5）
-- `local_feature_score` - 本地特色指数（1-5）
-- `rainy_day_score` - 雨天适配指数（1-5）
-- `indoor_outdoor` - 室内/室外/both
-
-#### 数据城市切换
-
-根据需求，将 POI 数据体系从广州改为**上海**，包含：
-- 20个精选上海 POI
-- 覆盖：黄浦区、静安区、徐汇区、浦东新区
-- 涵盖：咖啡、餐饮、博物馆、展览、景点、街道、购物、公园、夜景等类型
-
-#### 改进文件
-- `backend/pois.json` - 扩充字段 + 上海数据
+- LLM 负责理解和表达
+- 规则负责边界和约束
+- 排序负责偏好匹配
+- 路线规划负责执行调度
 
 ---
 
-### 二、POI 评分模块（优先级2）✅
+## 2. 四层改进
 
-#### 改进内容
+### 2.1 POI 字段设计
 
-新建 `backend/poi_ranker.py`，实现可解释的评分框架：
+我们扩充了 POI 数据字段，让每个点不仅有名称和分类，还具备更强的路线规划能力。
 
-```python
-final_score = (
-    0.25 × preference_match_score   # 偏好匹配
-    + 0.20 × semantic_score         # 语义评分
-    + 0.15 × rating_score          # 评分质量
-    + 0.15 × category_match_score  # 类别匹配
-    + 0.10 × budget_score          # 预算适配
-    + 0.10 × time_suitability_score # 时段适配
-    - 0.15 × queue_penalty         # 排队惩罚
-    - 0.10 × crowd_penalty         # 拥挤惩罚
-)
-```
+新增字段包括：
 
-#### 评分维度
+- `district`
+- `sub_category`
+- `business_hours`
+- `visit_duration`
+- `queue_level`
+- `photo_score`
+- `date_score`
+- `food_score`
+- `culture_score`
+- `local_feature_score`
+- `rainy_day_score`
+- `indoor_outdoor`
 
-1. **类别匹配分** - 是否匹配用户想要的类型
-2. **偏好匹配分** - 匹配用户意图标签、适合人群
-3. **语义评分** - photo_score、date_score、food_score 等多维评分
-4. **预算适配分** - 与用户预算的匹配程度
-5. **时段适配分** - 夜景、节奏快慢等时间相关
-6. **评分质量分** - 基于原始评分的质量衡量
-7. **排队惩罚** - 排队等级高则扣分
-8. **拥挤惩罚** - 人多场所则扣分
+这些字段让路线规划从“筛选 POI”升级为“组织路线”。
 
-#### 推荐理由生成
+### 2.2 POI 评分模块
 
-每个 POI 自动生成可解释的推荐理由：
-- "匹配用户的美食需求，food_score 较高"
-- "适合文化历史偏好，culture_score 较高"
-- "但存在一定排队风险，建议错峰前往"
+我们新增了 `backend/poi_ranker.py`，用于对候选 POI 做多维打分。
 
-#### 改进文件
-- `backend/poi_ranker.py` - 新建评分模块
+评分逻辑综合考虑：
 
----
+- 偏好匹配
+- 语义匹配
+- 类别匹配
+- 评分质量
+- 预算适配
+- 时段适配
+- 排队惩罚
+- 拥挤惩罚
 
-### 三、偏好解析增强（优先级2）✅
+这一步的意义在于：
 
-#### 改进内容
+- 不是简单过滤
+- 而是让系统能解释“为什么推荐这个点”
 
-升级 `backend/intent_parser.py`，从 poi(1) 的 `preference_parser.py` 中提炼：
+### 2.3 偏好解析增强
 
-#### 新增解析能力
+`backend/intent_parser.py` 负责把用户表达转成结构化意图。
 
-1. **预算解析**
-   - 显式：`预算 200`
-   - 隐式：`低预算` → 100元, `中等预算` → 200元
+支持的内容包括：
 
-2. **节奏解析**
-   - `轻松`、`慢慢逛` → slow
-   - `紧凑`、`高效` → fast
-   - 其他 → normal
+- 城市识别
+- 地标推断城市
+- 时间解析
+- 预算解析
+- 起点解析
+- 偏好归一化
+- 避雷项识别
+- 节奏识别
 
-3. **时间解析**
-   - 增强时间格式识别
-   - 支持：`上午10点`、`下午2点半`、`14:00`
+同时，我们把很多“软偏好”从硬规则里移走，避免语义规则越堆越碎。
 
-4. **偏好关键词**
-   - 新增：local_feature（本地特色）
-   - 新增：quiet（安静）
-   - 新增：rainy_day（雨天适配）
-   - 增强：couple、photo、food、culture、night_view
+### 2.4 时间调度逻辑
 
-5. **规避关键词**
-   - 新增：crowded（人少需求）
-   - 增强：queue（不想排队）
+`backend/route_planner.py` 负责把排序后的 POI 串成可执行路线。
 
-#### 改进文件
-- `backend/intent_parser.py` - 增强偏好解析
+它承担的任务包括：
+
+- 停留时长估计
+- 点与点之间交通时间估算
+- 总时长控制
+- 超时裁剪
+- 路线说明生成
+
+路线规划从“点的列表”变成“可执行行程”。
 
 ---
 
-### 四、时间调度逻辑（优先级3）✅
+## 3. 广州 / 上海 双城支持
 
-#### 改进内容
+系统支持广州和上海双城切换。
 
-升级 `backend/route_planner.py`，从 poi(1) 的 `time_scheduler.py` 中提炼：
+### 3.1 前端显式选择
 
-#### 新增调度能力
+用户可以在首页直接选择城市，这会作为最高优先级。
 
-1. **智能停留时长**
-   - 根据类别限定范围：
-     - 餐饮：50-120分钟
-     - 咖啡：30-70分钟
-     - 博物馆：70-150分钟
-   - 根据节奏调整：
-     - slow：×1.15
-     - normal：×1.0
-     - fast：×0.80
+### 3.2 输入自动识别
 
-2. **交通时间估算**
-   - 步行：`距离 × 12 分钟/km`
-   - 打车：`距离 × 2 + 5 分钟`
-   - 地铁：`距离 × 4 + 10 分钟`
+如果用户没有显式选城市，系统会根据地标和输入内容进行识别，例如：
 
-3. **到达/离开时间计算**
-   ```
-   到达时间 = 前一站离开 + 交通时间
-   离开时间 = 到达时间 + 停留时长
-   ```
+- 广州塔、花城广场、海心沙 -> 广州
+- 外滩、武康路、豫园 -> 上海
 
-4. **超时裁剪**
-   - 根据结束时间自动裁剪路线
-   - 优先保留高优先级 POI
+### 3.3 数据层切分
 
-5. **风险提醒**
-   - 排队等级≥4 且未规避排队 → "可能在高峰期排队"
-   - 室外场所且偏好雨天 → "天气不好时可能影响体验"
-
-#### 路线说明生成
-
-自动生成自然语言路线说明：
-- 包含类型多样性说明
-- 包含偏好满足说明
-- 包含预算控制说明
-- 包含节奏安排说明
-
-#### 改进文件
-- `backend/route_planner.py` - 增强时间调度
+POI 数据中每个点都带有 `city` 字段，检索和排序都会先按城市筛选，再进入后续流程。
 
 ---
 
-## 数据模型同步
+## 4. LLM 与规则的分工
 
-### 后端 Schema 升级 (`backend/schemas.py`)
+### 4.1 LLM 负责
 
-```python
-class POI(BaseModel):
-    # ... 原有字段
-    # 新增字段
-    sub_category: Optional[str]
-    district: Optional[str]
-    visit_duration: int = 90
-    business_hours: Optional[str]
-    suitable_for: List[str]
-    queue_level: int = Field(default=2, ge=1, le=5)
-    photo_score: int = Field(default=3, ge=1, le=5)
-    date_score: int = Field(default=3, ge=1, le=5)
-    food_score: int = Field(default=3, ge=1, le=5)
-    culture_score: int = Field(default=3, ge=1, le=5)
-    local_feature_score: int = Field(default=3, ge=1, le=5)
-    rainy_day_score: int = Field(default=3, ge=1, le=5)
-    indoor_outdoor: str = "indoor"
+- 理解自然语言
+- 输出结构化意图
+- 生成路线解释
+- 将模糊修改意见转成结构化需求
 
-class ParsedIntent(BaseModel):
-    # ... 原有字段
-    # 新增偏好字段
-    prefer_couple: bool = False
-    prefer_photo: bool = False
-    prefer_food: bool = False
-    prefer_culture: bool = False
-    prefer_local_feature: bool = False
-    prefer_night_view: bool = False
-    prefer_quiet: bool = False
-    prefer_rainy_day: bool = False
-    avoid_queue: bool = False
-    avoid_crowded: bool = False
-    pace: str = "normal"
-    transport_mode: str = "unknown"
+### 4.2 规则负责
 
-class RouteStop(BaseModel):
-    # ... 原有字段
-    # 新增字段
-    stay_minutes: int
-    travel_from_previous: Optional[dict[str, Any]]
+- 预算上限
+- 时间窗口
+- 营业时间冲突
+- 明确避雷项
+- 城市范围
+- 路线可行性
 
-class RouteResponse(BaseModel):
-    # ... 原有字段
-    # 新增字段
-    poi_count: int
-    covered_types: List[str]
-    route_explanation: str
-    strategy_type: Optional[str]
-    generated_at: Optional[str]
-```
+### 4.3 为什么要这样分
 
-### 前端模型同步 (`lib/models/route_models.dart`)
+如果所有内容都靠规则，会逐渐变成补丁系统。  
+如果所有内容都交给大模型，又会失去可控性。  
+所以最稳的方案是：
 
-同步所有新增字段到 Flutter 前端，包括：
-- Poi 类的完整字段
-- RouteStop 的停留时长和交通信息
-- RouteResponse 的统计信息和路线说明
+**LLM 管理解和表达，规则管边界，算法管执行。**
 
 ---
 
-## 改进效果
+## 5. 前后端同步情况
 
-### 路线质量提升
+### 5.1 前端
 
-**从：**
-- "条件过滤后随便排"
+Flutter 前端已完成基础页面结构：
 
-**到：**
-- "按用户需求偏好做可解释排序"
-- "智能时间调度确保路线可行"
-- "自动生成推荐理由和风险提醒"
+- 输入页
+- 结果页
+- 修改入口
+- 城市切换
+- 偏好 chips
 
-### 字段粒度提升
+### 5.2 后端
 
-**从：**
-```json
-{
-  "id": "gz-coffee-001",
-  "name": "星巴克",
-  "rating": 4.5
-}
-```
+FastAPI 后端已具备：
 
-**到：**
-```json
-{
-  "id": "sh-coffee-001",
-  "name": "% Arabica 上海烘焙坊",
-  "district": "黄浦区",
-  "rating": 4.7,
-  "queue_level": 2,
-  "photo_score": 5,
-  "date_score": 4,
-  "food_score": 3,
-  "business_hours": "08:00-20:00",
-  "suitable_for": ["情侣", "闺蜜", "独自旅行"]
-}
-```
+- 意图解析
+- 约束校验
+- POI 检索
+- POI 排序
+- 路线规划
+- 结果生成
 
-### 路线解释性提升
+### 5.3 数据模型
 
-现在每条路线都会生成：
-1. **路线说明** - 为什么这样安排
-2. **推荐理由** - 为什么选这个点
-3. **风险提醒** - 有什么需要注意的
-4. **策略类型** - 是什么类型的路线（浪漫约会/性价比优先/拍照打卡/轻松路线）
+前后端已经建立基础字段对齐，支持：
+
+- 城市
+- 起点
+- 预算
+- 时间
+- 偏好
+- 避雷项
+- 停留时长
+- 交通信息
+- 路线摘要
 
 ---
 
-## 未采用的内容
+## 6. 当前状态
 
-根据"去其糟粕"原则，以下内容未采纳：
+### 已完成
 
-1. ❌ 不搬整套项目架构
-2. ❌ 不直接使用 poi(1) 的城市数据
-3. ❌ 不直接抄复杂中文文案（自行编写干净、可控的表达）
-4. ❌ 不一上来使用复杂 TSP/整数规划算法
-5. ❌ 不使用有乱码的数据
+- 后端结构升级
+- POI 数据增强
+- 排序模块拆分
+- 时间调度逻辑
+- LLM 约束契约
+- 双城支持
 
----
+### 待继续
 
-## 下一步建议
-
-1. **测试新功能**
-   - 启动后端服务：`python backend/main.py`
-   - 测试不同偏好组合
-   - 验证时间调度准确性
-
-2. **补充 POI 数据**
-   - 可以继续补充更多上海 POI
-   - 确保每个类别有足够的候选点
-
-3. **优化评分权重**
-   - 根据实际使用反馈调整权重
-   - 可以做成可配置的参数
-
-4. **扩展偏好维度**
-   - 儿童友好
-   - 无障碍设施
-   - 宠物友好等
+- 更强的 modify 语义理解
+- 更直观的地图感展示
+- 多方案输出
+- 真正接入 LLM
+- 答辩材料整理
 
 ---
 
-## 文件变更清单
+## 7. 结论
 
-### 新建文件
-- `backend/poi_ranker.py` - POI 评分模块
+这次改造把系统从“规则驱动的推荐列表”推进到了“可以执行的路线规划支架”。
 
-### 修改文件
-- `backend/pois.json` - 扩充字段 + 上海数据
-- `backend/schemas.py` - 适配新字段
-- `backend/intent_parser.py` - 增强偏好解析
-- `backend/route_planner.py` - 增强时间调度
-- `lib/models/route_models.dart` - 同步前端模型
+当前系统已经具备：
 
----
+- 自然语言输入
+- 结构化解析
+- 偏好排序
+- 时间调度
+- 双城切换
+- 路线解释
+- 二次修改
 
-## 总结
+下一步最值得做的是：
 
-通过这次"取其精华"改进：
+1. 跑通前后端真实闭环
+2. 让 modify 更聪明
+3. 接入 LLM 做理解和解释
 
-✅ **POI 字段更丰富** - 从 10+ 个字段扩展到 20+ 个字段
-✅ **评分逻辑更智能** - 8 维度可解释评分
-✅ **偏好解析更精准** - 10+ 种偏好识别
-✅ **时间调度更合理** - 智能停留时长 + 交通估算
-✅ **数据体系已切换** - 广州 → 上海
-
-整体实现了从"推荐列表"到"可执行路线方案"的升级！

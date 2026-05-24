@@ -1,6 +1,23 @@
-from typing import Any, List, Optional
+﻿from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+class LLMIntentDraft(BaseModel):
+    """Structured intent returned by an LLM before hard validation."""
+
+    city: Optional[str] = None
+    start_location: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    budget: Optional[int] = None
+    required_categories: List[str] = Field(default_factory=list)
+    preferences: List[str] = Field(default_factory=list)
+    avoid: List[str] = Field(default_factory=list)
+    pace: Optional[str] = None
+    transport_mode: Optional[str] = None
+    must_include: List[str] = Field(default_factory=list)
+    notes: Optional[str] = None
 
 
 class POI(BaseModel):
@@ -38,6 +55,8 @@ class ParsedIntent(BaseModel):
     end_time: Optional[str] = None
     budget: Optional[int] = None
     preferences: List[str] = Field(default_factory=list)
+    soft_preferences: List[str] = Field(default_factory=list)
+    hard_constraints: List[str] = Field(default_factory=list)
     avoid: List[str] = Field(default_factory=list)
     required_categories: List[str] = Field(default_factory=list)
     preferred_categories: List[str] = Field(default_factory=list)
@@ -59,6 +78,8 @@ class ParsedIntent(BaseModel):
     transport_mode: str = "walking"
     must_include: List[str] = Field(default_factory=list)
     intent_tags: List[str] = Field(default_factory=list)
+    parse_source: str = "fallback"
+    llm_payload: Optional[Dict[str, Any]] = None
 
 
 class RouteStop(BaseModel):

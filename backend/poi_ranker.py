@@ -1,16 +1,18 @@
+from __future__ import annotations
+
 from schemas import POI, ParsedIntent
 
 
 CATEGORY_LABELS = {
-    "coffee": "咖啡",
-    "food": "餐饮",
-    "museum": "博物馆",
-    "exhibition": "展览",
-    "scene": "景点",
-    "street": "街区",
-    "shopping": "购物",
-    "park": "公园",
-    "night": "夜景",
+    "coffee": "??",
+    "food": "??",
+    "museum": "???",
+    "exhibition": "??",
+    "scene": "??",
+    "street": "??",
+    "shopping": "??",
+    "park": "??",
+    "night": "??",
 }
 
 
@@ -62,6 +64,10 @@ def _preference_match_score(poi: POI, intent: ParsedIntent) -> float:
         score += (poi.local_feature_score / 5) * 0.18
     if intent.prefer_rainy_day:
         score += (poi.rainy_day_score / 5) * 0.12
+    if intent.prefer_night_view:
+        score += (0.8 if poi.category == "night" else poi.photo_score / 5) * 0.15
+    if intent.prefer_quiet:
+        score += (1 - poi.queue_level / 5) * 0.10
 
     return _clip(score)
 
@@ -80,6 +86,10 @@ def _semantic_score(poi: POI, intent: ParsedIntent) -> float:
         values.append(poi.local_feature_score / 5)
     if intent.prefer_rainy_day:
         values.append(poi.rainy_day_score / 5)
+    if intent.prefer_night_view:
+        values.append(0.9 if poi.category == "night" else poi.photo_score / 5)
+    if intent.prefer_quiet:
+        values.append(1 - poi.queue_level / 5)
 
     if not values:
         return 0.5
@@ -105,12 +115,27 @@ def _time_suitability_score(poi: POI, intent: ParsedIntent) -> float:
 
 def _queue_penalty(poi: POI, intent: ParsedIntent) -> float:
     queue_score = poi.queue_level / 5
-    return queue_score if intent.avoid_queue else queue_score * 0.4
+    penalty = queue_score
+    if intent.avoid_queue:
+        penalty *= 1.5
+    return _clip(penalty)
 
 
 def _crowd_penalty(poi: POI, intent: ParsedIntent) -> float:
     crowd_score = poi.queue_level / 5
-    return crowd_score if (intent.avoid_crowded or intent.prefer_quiet) else crowd_score * 0.4
+    penalty = crowd_score
+    if intent.avoid_crowded or intent.prefer_quiet:
+        penalty *= 1.3
+    return _clip(penalty)
+
+
+def _price_penalty(poi: POI, intent: ParsedIntent) -> float:
+    if not intent.budget:
+        return 0.0
+    expected = intent.budget / max(len(intent.required_categories), 1)
+    if poi.price > expected * 1.5:
+        return min(0.3, (poi.price - expected * 1.5) / expected)
+    return 0.0
 
 
 def _calculate_final_score(scores: dict[str, float]) -> float:
@@ -123,6 +148,7 @@ def _calculate_final_score(scores: dict[str, float]) -> float:
         + 0.10 * scores["time_suitability_score"]
         - 0.15 * scores["queue_penalty"]
         - 0.10 * scores["crowd_penalty"]
+        - 0.05 * scores["price_penalty"]
     )
     return _clip(value)
 
@@ -132,34 +158,44 @@ def _generate_recommend_reason(poi: POI, intent: ParsedIntent, scores: dict[str,
     label = CATEGORY_LABELS.get(poi.category, poi.category)
 
     if scores["category_match_score"] >= 0.95:
-        reasons.append(f"很好匹配你想要的{label}需求")
+        reasons.append(f"???????{label}??")
     if intent.prefer_photo and poi.photo_score >= 4:
-        reasons.append("拍照表现好，出片概率高")
+        reasons.append("???????????")
     if intent.prefer_couple and poi.date_score >= 4:
-        reasons.append("约会氛围不错")
+        reasons.append("??????")
     if intent.prefer_food and poi.food_score >= 4:
-        reasons.append("美食体验突出")
+        reasons.append("??????")
     if intent.prefer_culture and poi.culture_score >= 4:
-        reasons.append("文化体验更强")
+        reasons.append("??????")
     if intent.prefer_local_feature and poi.local_feature_score >= 4:
-        reasons.append("本地特色比较明显")
+        reasons.append("????????")
+    if intent.prefer_night_view and poi.category == "night":
+        reasons.append("??????")
+    if intent.prefer_quiet and poi.queue_level <= 2:
+        reasons.append("??????")
     if scores["budget_score"] >= 0.85:
-        reasons.append("预算适配度高")
+        reasons.append("??????")
+    if poi.price == 0:
+        reasons.append("????")
     if scores["queue_penalty"] >= 0.7:
-        reasons.append("但高峰时段可能需要排队")
+        reasons.append("??????????")
 
     if not reasons:
-        reasons.append("综合评分稳定，适合作为路线中的一站")
+        reasons.append("?????????????????")
 
-    return "，".join(reasons) + "。"
+    return "?".join(reasons) + "?"
 
 
 def rank_pois(pois: list[POI], intent: ParsedIntent, top_k: int = 30) -> list[dict]:
     if not pois:
         return []
 
+    city_filtered = [p for p in pois if p.city == intent.city] if intent.city else pois
+    if not city_filtered:
+        return []
+
     scored = []
-    for poi in pois:
+    for poi in city_filtered:
         scores = {
             "preference_match_score": _preference_match_score(poi, intent),
             "semantic_score": _semantic_score(poi, intent),
@@ -169,6 +205,7 @@ def rank_pois(pois: list[POI], intent: ParsedIntent, top_k: int = 30) -> list[di
             "time_suitability_score": _time_suitability_score(poi, intent),
             "queue_penalty": _queue_penalty(poi, intent),
             "crowd_penalty": _crowd_penalty(poi, intent),
+            "price_penalty": _price_penalty(poi, intent),
         }
         final_score = _calculate_final_score(scores)
         scored.append(

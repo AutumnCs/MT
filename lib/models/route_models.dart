@@ -1,3 +1,179 @@
+class IntentPromptBundle {
+  final String systemPrompt;
+  final String userPrompt;
+
+  IntentPromptBundle({
+    required this.systemPrompt,
+    required this.userPrompt,
+  });
+
+  factory IntentPromptBundle.fromJson(Map<String, dynamic> json) {
+    return IntentPromptBundle(
+      systemPrompt: json['system_prompt'] ?? '',
+      userPrompt: json['user_prompt'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'system_prompt': systemPrompt,
+      'user_prompt': userPrompt,
+    };
+  }
+}
+
+class IntentDraft {
+  final String? city;
+  final String? startLocation;
+  final String? startTime;
+  final String? endTime;
+  final int? budget;
+  final List<String> requiredCategories;
+  final List<String> preferences;
+  final List<String> avoid;
+  final String? pace;
+  final String? transportMode;
+  final List<String> mustInclude;
+  final String? notes;
+
+  IntentDraft({
+    this.city,
+    this.startLocation,
+    this.startTime,
+    this.endTime,
+    this.budget,
+    this.requiredCategories = const [],
+    this.preferences = const [],
+    this.avoid = const [],
+    this.pace,
+    this.transportMode,
+    this.mustInclude = const [],
+    this.notes,
+  });
+
+  factory IntentDraft.fromJson(Map<String, dynamic> json) {
+    return IntentDraft(
+      city: json['city'],
+      startLocation: json['start_location'],
+      startTime: json['start_time'],
+      endTime: json['end_time'],
+      budget: json['budget'],
+      requiredCategories: List<String>.from(json['required_categories'] ?? const []),
+      preferences: List<String>.from(json['preferences'] ?? const []),
+      avoid: List<String>.from(json['avoid'] ?? const []),
+      pace: json['pace'],
+      transportMode: json['transport_mode'],
+      mustInclude: List<String>.from(json['must_include'] ?? const []),
+      notes: json['notes'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'city': city,
+      'start_location': startLocation,
+      'start_time': startTime,
+      'end_time': endTime,
+      'budget': budget,
+      'required_categories': requiredCategories,
+      'preferences': preferences,
+      'avoid': avoid,
+      'pace': pace,
+      'transport_mode': transportMode,
+      'must_include': mustInclude,
+      'notes': notes,
+    };
+  }
+}
+
+class ParsedIntent {
+  final String city;
+  final String? startLocation;
+  final String? startTime;
+  final String? endTime;
+  final int? budget;
+  final List<String> preferences;
+  final List<String> softPreferences;
+  final List<String> hardConstraints;
+  final List<String> avoid;
+  final List<String> requiredCategories;
+  final List<String> preferredCategories;
+  final double? maxDistance;
+  final String pace;
+  final String transportMode;
+  final List<String> mustInclude;
+  final List<String> intentTags;
+  final String parseSource;
+  final Map<String, dynamic>? llmPayload;
+
+  ParsedIntent({
+    required this.city,
+    this.startLocation,
+    this.startTime,
+    this.endTime,
+    this.budget,
+    this.preferences = const [],
+    this.softPreferences = const [],
+    this.hardConstraints = const [],
+    this.avoid = const [],
+    this.requiredCategories = const [],
+    this.preferredCategories = const [],
+    this.maxDistance,
+    this.pace = 'normal',
+    this.transportMode = 'walking',
+    this.mustInclude = const [],
+    this.intentTags = const [],
+    this.parseSource = 'fallback',
+    this.llmPayload,
+  });
+
+  factory ParsedIntent.fromJson(Map<String, dynamic> json) {
+    return ParsedIntent(
+      city: json['city'] ?? '广州',
+      startLocation: json['start_location'],
+      startTime: json['start_time'],
+      endTime: json['end_time'],
+      budget: json['budget'],
+      preferences: List<String>.from(json['preferences'] ?? const []),
+      softPreferences: List<String>.from(json['soft_preferences'] ?? const []),
+      hardConstraints: List<String>.from(json['hard_constraints'] ?? const []),
+      avoid: List<String>.from(json['avoid'] ?? const []),
+      requiredCategories: List<String>.from(json['required_categories'] ?? const []),
+      preferredCategories: List<String>.from(json['preferred_categories'] ?? const []),
+      maxDistance: (json['max_distance'] as num?)?.toDouble(),
+      pace: json['pace'] ?? 'normal',
+      transportMode: json['transport_mode'] ?? 'walking',
+      mustInclude: List<String>.from(json['must_include'] ?? const []),
+      intentTags: List<String>.from(json['intent_tags'] ?? const []),
+      parseSource: json['parse_source'] ?? 'fallback',
+      llmPayload: json['llm_payload'] == null ? null : Map<String, dynamic>.from(json['llm_payload']),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'city': city,
+      'start_location': startLocation,
+      'start_time': startTime,
+      'end_time': endTime,
+      'budget': budget,
+      'preferences': preferences,
+      'soft_preferences': softPreferences,
+      'hard_constraints': hardConstraints,
+      'avoid': avoid,
+      'required_categories': requiredCategories,
+      'preferred_categories': preferredCategories,
+      'max_distance': maxDistance,
+      'pace': pace,
+      'transport_mode': transportMode,
+      'must_include': mustInclude,
+      'intent_tags': intentTags,
+      'parse_source': parseSource,
+      'llm_payload': llmPayload,
+    };
+  }
+}
+
 class Poi {
   final String id;
   final String name;
@@ -246,16 +422,19 @@ class RouteResponse {
 class RouteRequest {
   final String query;
   final List<String>? preferences;
+  final String? city;
 
   RouteRequest({
     required this.query,
     this.preferences,
+    this.city,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'query': query,
       'preferences': preferences ?? [],
+      'city': city,
     };
   }
 }

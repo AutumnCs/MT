@@ -6,11 +6,13 @@ import '../services/route_api_service.dart';
 class RouteResultPage extends StatefulWidget {
   final RouteResponse routeResponse;
   final String originalQuery;
+  final String currentCity;
 
   const RouteResultPage({
     super.key,
     required this.routeResponse,
     required this.originalQuery,
+    required this.currentCity,
   });
 
   @override
@@ -75,6 +77,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
           builder: (context) => RouteResultPage(
             routeResponse: newRouteResponse,
             originalQuery: widget.originalQuery,
+            currentCity: widget.currentCity,
           ),
         ),
       );
@@ -206,6 +209,16 @@ class _RouteResultPageState extends State<RouteResultPage> {
               height: 1.55,
             ),
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildTag('城市：${widget.currentCity}'),
+              if (widget.originalQuery.isNotEmpty) _buildTag('原始需求已保留'),
+              if (route.strategyType != null) _buildTag('策略：${route.strategyType}'),
+            ],
+          ),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -216,6 +229,25 @@ class _RouteResultPageState extends State<RouteResultPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTag(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF92400E),
+        ),
       ),
     );
   }

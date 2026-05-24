@@ -1,8 +1,11 @@
+﻿from __future__ import annotations
+
 from datetime import datetime
+from math import fabs
+from typing import Optional
 
 import poi_ranker
 from schemas import POI, ParsedIntent, RouteResponse, RouteStop
-
 
 CATEGORY_LABELS = {
     "coffee": "咖啡",
@@ -16,6 +19,18 @@ CATEGORY_LABELS = {
     "night": "夜景",
 }
 
+TRANSPORT_SPEEDS = {
+    "walking": 4.5,
+    "taxi": 18.0,
+    "metro": 12.0,
+}
+
+TRANSPORT_BASE_COST = {
+    "walking": 0,
+    "taxi": 8,
+    "metro": 3,
+}
+
 
 def _parse_time_to_minutes(time_str: str) -> int:
     text = (time_str or "").strip()
@@ -23,23 +38,23 @@ def _parse_time_to_minutes(time_str: str) -> int:
         return 14 * 60
 
     if ":" in text:
-        hour, minute = text.split(":", 1)
-        return int(hour) * 60 + int(minute)
+        match = None
+        import re
+
+        match = re.search(r"(\d{1,2}):(\d{2})", text)
+        if match:
+            return int(match.group(1)) * 60 + int(match.group(2))
 
     import re
 
-    match = re.search(r"(\d+)", text)
+    match = re.search(r"(\d{1,2})", text)
     if not match:
         return 14 * 60
 
     hour = int(match.group(1))
     minute = 30 if "半" in text else 0
 
-    if "下午" in text and hour < 12:
-        hour += 12
-    elif "晚上" in text and hour < 12:
-        hour += 12
-    elif "中午" in text and hour < 11:
+    if ("下午" in text or "晚上" in text or "中午" in text) and hour < 12:
         hour += 12
 
     return hour * 60 + minute
@@ -70,56 +85,64 @@ def _estimate_stay_minutes(poi: POI, pace: str) -> int:
 
 
 def _calculate_distance(poi1: POI, poi2: POI) -> float:
-    lat_diff = abs(poi1.latitude - poi2.latitude)
-    lon_diff = abs(poi1.longitude - poi2.longitude)
+    lat_diff = fabs(poi1.latitude - poi2.latitude)
+    lon_diff = fabs(poi1.longitude - poi2.longitude)
     return lat_diff * 111 + lon_diff * 85
 
 
 def _estimate_travel(distance_km: float, mode: str) -> dict:
+    speed = TRANSPORT_SPEEDS.get(mode, TRANSPORT_SPEEDS["walking"])
+    duration = max(5, int(distance_km / max(speed, 1) * 60))
+    cost = TRANSPORT_BASE_COST.get(mode, 0)
     if mode == "taxi":
-        duration = distance_km * 2 + 5
-        cost = distance_km * 2
-    elif mode == "metro":
-        duration = distance_km * 4 + 10
-        cost = 3
-    else:
-        duration = distance_km * 12
-        cost = 0
-
+        cost = int(max(cost, distance_km * 2))
     return {
         "mode": mode,
         "distance_km": round(distance_km, 2),
-        "duration_min": int(duration),
+        "duration_min": duration,
         "cost": int(cost),
     }
 
 
+def _route_strategy(intent: ParsedIntent) -> str:
+    if intent.prefer_couple:
+        return "约会方案"
+    if intent.prefer_photo:
+        return "拍照方案"
+    if intent.budget and intent.budget <= 150:
+        return "高性价比方案"
+    if intent.pace == "slow":
+        return "轻松方案"
+    return "稳妥方案"
+
+
 def _build_explanation(stops: list[RouteStop], intent: ParsedIntent) -> str:
     if not stops:
-        return "当前约束下没有筛选到合适的路线。"
+        return "当前条件下没有筛选到合适的路线。可以放宽预算、时间或偏好后再试一次。"
 
     covered = [CATEGORY_LABELS.get(stop.poi.category, stop.poi.category) for stop in stops]
     unique = list(dict.fromkeys(covered))
 
     parts = [f"这条路线覆盖了 {len(unique)} 类体验：{'、'.join(unique)}。"]
     if intent.prefer_couple:
-        parts.append("路线优先考虑了约会氛围和节奏舒适度。")
+        parts.append("路线优先考虑约会氛围和停留节奏。")
     if intent.prefer_photo:
-        parts.append("路线加入了更适合拍照和打卡的点位。")
+        parts.append("路线增加了更适合拍照打卡的点位。")
     if intent.prefer_food:
-        parts.append("餐饮安排被放在更重要的位置。")
+        parts.append("餐饮安排放在更关键的位置，方便衔接整体节奏。")
     if intent.budget:
         parts.append(f"整体会尽量控制在 {intent.budget} 元预算附近。")
     if intent.pace == "slow":
-        parts.append("整体节奏偏轻松，不会安排得太赶。")
+        parts.append("节奏会更松弛，不会安排得太赶。")
+    if intent.prefer_rainy_day:
+        parts.append("路线会更偏向室内或可避雨的点位。")
 
-    parts.append(f"建议从 {stops[0].arrival_time} 左右开始，到 {stops[-1].departure_time} 左右结束。")
-    return " ".join(parts)
+    parts.append(f"建议在 {stops[0].arrival_time} 左右开始，{stops[-1].departure_time} 左右结束。")
+    return "".join(parts)
 
 
 def _select_route_pois(ranked_results: list[dict], intent: ParsedIntent) -> list[POI]:
     max_pois = 4 if intent.pace == "slow" else 3
-
     selected: list[POI] = []
     used_categories: set[str] = set()
 
@@ -148,7 +171,7 @@ def generate_route(pois: list[POI], intent: ParsedIntent) -> RouteResponse:
     if not pois:
         return RouteResponse(
             title=f"{intent.city}路线建议",
-            summary="当前条件下还没有筛选到合适的站点，可以放宽预算、时间或偏好后再试一次。",
+            summary="当前条件下没有筛选到合适的站点，可以放宽预算、时间或偏好后再试一次。",
             total_cost=0,
             total_duration=0,
             total_distance=0.0,
@@ -163,7 +186,7 @@ def generate_route(pois: list[POI], intent: ParsedIntent) -> RouteResponse:
     ranked = poi_ranker.rank_pois(pois, intent, top_k=30)
     selected_pois = _select_route_pois(ranked, intent)
 
-    current_minutes = _parse_time_to_minutes(intent.start_time or "下午2点")
+    current_minutes = _parse_time_to_minutes(intent.start_time or "14:00")
     mode = intent.transport_mode if intent.transport_mode in {"walking", "taxi", "metro"} else "walking"
     stops: list[RouteStop] = []
 
@@ -181,11 +204,11 @@ def generate_route(pois: list[POI], intent: ParsedIntent) -> RouteResponse:
         ranked_item = next((item for item in ranked if item["poi"].id == poi.id), None)
         reason = ranked_item["recommend_reason"] if ranked_item else "综合匹配度较高。"
 
-        risk_alert = None
+        risk_alert: Optional[str] = None
         if poi.queue_level >= 4 and not intent.avoid_queue:
             risk_alert = "高峰时段可能需要排队，建议错峰前往。"
         elif poi.indoor_outdoor == "outdoor" and intent.prefer_rainy_day:
-            risk_alert = "如果下雨，户外体验可能会受影响。"
+            risk_alert = "如果下雨，户外体验可能受影响。"
 
         stops.append(
             RouteStop(
@@ -198,7 +221,6 @@ def generate_route(pois: list[POI], intent: ParsedIntent) -> RouteResponse:
                 travel_from_previous=travel_info,
             )
         )
-
         current_minutes = departure
 
     total_cost = sum(stop.poi.price for stop in stops) + sum(
@@ -207,23 +229,13 @@ def generate_route(pois: list[POI], intent: ParsedIntent) -> RouteResponse:
     total_duration = sum(stop.stay_minutes for stop in stops) + sum(
         (stop.travel_from_previous or {}).get("duration_min", 0) for stop in stops
     )
-    total_distance = sum(
-        (stop.travel_from_previous or {}).get("distance_km", 0.0) for stop in stops
+    total_distance = sum((stop.travel_from_previous or {}).get("distance_km", 0.0) for stop in stops)
+    covered_types = list(
+        dict.fromkeys(CATEGORY_LABELS.get(stop.poi.category, stop.poi.category) for stop in stops)
     )
-    covered_types = list(dict.fromkeys(CATEGORY_LABELS.get(stop.poi.category, stop.poi.category) for stop in stops))
-
-    strategy_type = "稳妥方案"
-    if intent.prefer_couple:
-        strategy_type = "约会方案"
-    elif intent.prefer_photo:
-        strategy_type = "拍照方案"
-    elif intent.budget and intent.budget <= 150:
-        strategy_type = "性价比方案"
-    elif intent.pace == "slow":
-        strategy_type = "轻松方案"
 
     summary = (
-        f"为你安排了 {len(stops)} 个站点。总花费约 {total_cost} 元，"
+        f"为你安排了 {len(stops)} 个站点，总花费约 {total_cost} 元，"
         f"总时长约 {total_duration // 60} 小时 {total_duration % 60} 分钟，"
         f"总距离约 {round(total_distance, 1)} 公里。"
     )
@@ -238,6 +250,6 @@ def generate_route(pois: list[POI], intent: ParsedIntent) -> RouteResponse:
         covered_types=covered_types,
         stops=stops,
         route_explanation=_build_explanation(stops, intent),
-        strategy_type=strategy_type,
+        strategy_type=_route_strategy(intent),
         generated_at=datetime.now().isoformat(),
     )

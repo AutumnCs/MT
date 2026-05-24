@@ -66,6 +66,71 @@ class RouteApiService {
     }
   }
 
+  Future<IntentPromptBundle> fetchIntentPrompt({
+    required String query,
+    String? city,
+  }) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$baseUrl/intent/prompt'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'query': query, 'city': city}),
+          )
+          .timeout(timeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        return IntentPromptBundle.fromJson(data);
+      }
+
+      throw ApiException('获取意图提示失败: ${response.statusCode}', statusCode: response.statusCode);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      return IntentPromptBundle(
+        systemPrompt: 'LLM prompt unavailable',
+        userPrompt: query,
+      );
+    }
+  }
+
+  Future<ParsedIntent> parseIntent({
+    required String query,
+    String? city,
+    IntentDraft? llmDraft,
+  }) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$baseUrl/intent/parse'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'query': query,
+              'city': city,
+              'llm_draft': llmDraft?.toJson(),
+            }),
+          )
+          .timeout(timeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        return ParsedIntent.fromJson(data);
+      }
+
+      throw ApiException('解析意图失败: ${response.statusCode}', statusCode: response.statusCode);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      return ParsedIntent(
+        city: city ?? '广州',
+        startLocation: null,
+        startTime: null,
+        endTime: null,
+        budget: null,
+        parseSource: 'fallback',
+      );
+    }
+  }
+
   RouteResponse _getMockRouteResponse(String query, {bool isModified = false}) {
     final isShanghai = query.contains('上海') || query.contains('外滩') || query.contains('武康路');
 

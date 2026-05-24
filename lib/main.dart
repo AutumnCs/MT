@@ -43,10 +43,17 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
   final TextEditingController _controller = TextEditingController();
   final Set<String> _selectedPreferences = {};
 
+  static const _cities = [
+    {'name': '广州', 'emoji': '🏙️', 'landmarks': ['广州塔', '花城广场', '海心沙', '太古汇']},
+    {'name': '上海', 'emoji': '🌃', 'landmarks': ['外滩', '豫园', '东方明珠', '武康路']},
+  ];
+
+  String _selectedCity = '上海';
+
   static const _examples = <String>[
     '周六下午两点从广州塔出发，预算 200，想约会，想喝咖啡、看展、吃饭，不想太累，晚上 9 点前结束。',
     '今晚下班后想吃点好的再散步，预算 180，不想排太久队。',
-    '周末带朋友逛上海，想拍照、喝咖啡，顺便吃饭，路线不要太绕。',
+    '周末从外滩出发，想拍照、喝咖啡、吃本帮菜，路线不要太绕。',
   ];
 
   static const _preferenceChips = <Map<String, dynamic>>[
@@ -95,6 +102,12 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
     );
   }
 
+  void _handleCityChange(String city) {
+    setState(() {
+      _selectedCity = city;
+    });
+  }
+
   Future<void> _generateRoute() async {
     final query = _controller.text.trim();
     if (query.isEmpty) {
@@ -119,12 +132,31 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
     setState(() => _loadingMessage = '正在生成路线...');
 
     try {
+      final apiService = RouteApiService();
+      ParsedIntent? parsedIntent;
+      try {
+        parsedIntent = await apiService.parseIntent(
+          query: query,
+          city: _selectedCity,
+        );
+      } catch (_) {
+        parsedIntent = null;
+      }
+
+      final parsedPreferences = parsedIntent?.preferences ?? const <String>[];
+      final parsedCity = parsedIntent?.city ?? '';
+      final mergedPreferences = <String>{
+        ..._selectedPreferences,
+        ...parsedPreferences,
+      }.toList();
+      final effectiveCity = parsedCity.isNotEmpty ? parsedCity : _selectedCity;
+
       final request = RouteRequest(
         query: query,
-        preferences: _selectedPreferences.toList(),
+        preferences: mergedPreferences,
+        city: effectiveCity,
       );
 
-      final apiService = RouteApiService();
       final routeResponse = await apiService.generateRoute(request);
 
       if (!mounted) {
@@ -138,6 +170,7 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
           builder: (context) => RouteResultPage(
             routeResponse: routeResponse,
             originalQuery: query,
+            currentCity: effectiveCity,
           ),
         ),
       );
@@ -176,6 +209,8 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
                 children: [
                   const _HeroCard(),
                   const SizedBox(height: 18),
+                  _buildCitySelector(),
+                  const SizedBox(height: 18),
                   _buildPreferenceSection(),
                   const SizedBox(height: 18),
                   _buildInputSection(),
@@ -186,6 +221,79 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
             ),
           ),
           if (_isLoading) _buildLoadingOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCitySelector() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(15, 23, 42, 0.06),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '选择城市',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: _cities.map((city) {
+              final cityName = city['name'] as String;
+              final emoji = city['emoji'] as String;
+              final isSelected = _selectedCity == cityName;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => _handleCityChange(cityName),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFFEF3C7) : const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected ? const Color(0xFFF2C230) : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          emoji,
+                          style: const TextStyle(fontSize: 28),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          cityName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected ? const Color(0xFF111827) : const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
         ],
       ),
     );
@@ -281,7 +389,7 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
             minLines: 5,
             maxLines: 8,
             decoration: InputDecoration(
-              hintText: '比如：周六下午两点从广州塔出发，预算 200，想喝咖啡、看展、吃饭，不想太累',
+              hintText: '比如：周六下午两点从${_selectedCity == '广州' ? '广州塔' : '外滩'}出发，预算 200，想喝咖啡、看展、吃饭，不想太累',
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(
@@ -349,6 +457,11 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
                     _controller.selection = TextSelection.fromPosition(
                       TextPosition(offset: example.length),
                     );
+                    final selectedCityData = _cities.firstWhere(
+                      (c) => (c['landmarks'] as List<String>).any((l) => example.contains(l)),
+                      orElse: () => _cities.first,
+                    );
+                    _selectedCity = selectedCityData['name'] as String;
                   });
                 },
                 borderRadius: BorderRadius.circular(16),
@@ -446,7 +559,7 @@ class _HeroCard extends StatelessWidget {
           ),
           SizedBox(height: 12),
           Text(
-            '直接用自然语言说出你的出行需求，我们会帮你把咖啡、看展、吃饭、散步等目标串成一条可执行路线。',
+            '支持广州、上海双城路线规划。直接用自然语言说出你的出行需求，我们会帮你把咖啡、看展、吃饭、散步等目标串成一条可执行路线。',
             style: TextStyle(
               fontSize: 14,
               height: 1.6,

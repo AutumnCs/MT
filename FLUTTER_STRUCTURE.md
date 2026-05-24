@@ -1,214 +1,203 @@
 # Flutter 项目结构说明
 
-## 项目概述
+## 1. 项目定位
 
-这是一个基于 Flutter 的 AI 路线规划应用，名为"现在就出发"（Meituan Agent）。
+这是一个基于 Flutter 的 AI 本地路线规划应用，核心目标是：
 
-## 目录结构
+- 接收用户自然语言需求
+- 生成可执行路线
+- 支持二次修改
+- 支持广州 / 上海双城样例
 
-```
+---
+
+## 2. 目录结构
+
+```text
 lib/
-├── main.dart                 # 应用入口，包含首页（需求输入页）
+├── main.dart                 # 应用入口，首页（需求输入页）
 ├── models/
-│   └── route_models.dart    # 数据模型层
+│   └── route_models.dart     # 数据模型层
 ├── services/
-│   └── route_api_service.dart # API服务层
+│   └── route_api_service.dart # API 服务层
 └── pages/
-    └── route_result_page.dart  # 路线结果页
+    └── route_result_page.dart # 路线结果页
 ```
 
-## 核心功能模块
+---
 
-### 1. 数据模型层 (models/route_models.dart)
+## 3. 核心模块
 
-包含以下核心类：
+### 3.1 数据模型层 `models/route_models.dart`
 
-- **Poi**: 地点/兴趣点模型
-  - 属性：id, name, category, latitude, longitude, address, rating, priceRange等
-  
-- **RouteStop**: 路线站点模型
-  - 属性：order, poi, arrivalTime, departureTime, stayDuration, estimatedCost, reason, riskAlert
-  
-- **RouteResponse**: 路线响应模型
-  - 属性：routeId, title, summary, totalBudget, totalDuration, totalDistance, poiCount, coveredTypes, stops, routeExplanation, strategyType, generatedAt
-  
-- **RouteRequest**: 路线请求模型
-  - 属性：query, preferences
-  
-- **ModifyRequest**: 修改请求模型
-  - 属性：query, originalQuery, currentRoute
+主要模型：
 
-### 2. API服务层 (services/route_api_service.dart)
+- `Poi`
+  - 地点信息
+  - 城市、区域、类别、评分、停留时长、排队、拍照、约会、本地特色等字段
 
-**RouteApiService** 类提供以下方法：
+- `RouteStop`
+  - 路线中的单个站点
+  - 包含到达时间、离开时间、停留时长、交通信息、推荐理由、风险提醒
 
-- `generateRoute(RouteRequest request)`: 生成新路线
-  - 调用后端 `/api/route/generate` 接口
-  - 如果后端不可用，使用mock数据作为fallback
-  
-- `modifyRoute(ModifyRequest request)`: 修改现有路线
-  - 调用后端 `/api/route/modify` 接口
-  - 如果后端不可用，使用mock数据作为fallback
+- `RouteResponse`
+  - 路线结果
+  - 包含标题、摘要、总花费、总时长、总距离、站点数、覆盖类型、路线说明、策略类型
 
-**API配置**：
-- Base URL: `http://localhost:8000/api`
-- 超时时间: 30秒
+- `RouteRequest`
+  - 首页请求
+  - 包含 query、preferences、city
 
-### 3. 首页 - 需求输入页 (main.dart)
+- `ModifyRequest`
+  - 二次修改请求
+  - 包含 query、originalQuery、currentRoute
 
-**PlannerInputPage** 组件包含：
+---
 
-1. **HeroCard（品牌区）**
-   - 项目名："现在就出发"
-   - 副标题："AI 本地路线规划"
-   - 提示文案："描述你的行程，我来帮你规划"
+### 3.2 API 服务层 `services/route_api_service.dart`
 
-2. **快速偏好选择区**
-   - 支持的偏好标签：约会、拍照、不想排队、性价比、轻松路线、美食、文艺、夜生活
-   - 点击标签会自动拼接到输入框中
+主要职责：
 
-3. **输入区**
-   - 大号多行输入框
-   - 占位文案贴合赛题场景
-   - "生成路线"主按钮
+- `generateRoute(RouteRequest request)`
+  - 调用后端 `/api/route/generate`
+  - 后端不可用时自动 fallback 到 mock 数据
 
-4. **示例需求卡片**
-   - 3个可点选的示例需求
-   - 点击自动填入输入框
+- `modifyRoute(ModifyRequest request)`
+  - 调用后端 `/api/route/modify`
+  - 后端不可用时自动 fallback 到 mock 数据
 
-5. **加载态**
-   - 显示"正在分析需求..."和"正在生成路线..."
-   - 遮罩层防止重复提交
+Android 模拟器默认访问：
 
-### 4. 路线结果页 (pages/route_result_page.dart)
+```text
+http://10.0.2.2:8000/api
+```
 
-**RouteResultPage** 组件包含：
+桌面调试默认访问：
 
-1. **顶部结果摘要卡**
-   - 路线标题
-   - 路线总结
-   - 统计信息：总预算、总时长、总距离、站点数
+```text
+http://127.0.0.1:8000/api
+```
 
-2. **方案标签区**
-   - 显示当前方案类型（如：性价比优先、轻松路线等）
+---
 
-3. **路线时间轴/站点列表**
-   - 每个站点卡片显示：
-     - POI名称和类别
-     - 到达/离开时间
-     - 停留时长
-     - 价格和评分
-     - 推荐理由
-     - 风险提醒（如果有）
+### 3.3 首页 `main.dart`
 
-4. **路线说明区**
+首页是“需求输入页”，核心组件包括：
+
+1. 城市切换
+   - 广州 / 上海
+
+2. 快速偏好 chips
+   - 约会
+   - 拍照
+   - 不想排队
+   - 性价比
+   - 轻松路线
+   - 美食
+   - 文艺
+   - 夜生活
+
+3. 多行输入框
+   - 用户输入自然语言需求
+
+4. 示例需求卡片
+   - 一键填入测试样例
+
+5. 主按钮
+   - 生成路线
+
+6. Loading 态
+   - 正在分析需求
+   - 正在生成路线
+
+---
+
+### 3.4 路线结果页 `pages/route_result_page.dart`
+
+路线结果页主要展示：
+
+1. 路线摘要
+   - 标题
+   - 总结
+   - 总预算
+   - 总时长
+   - 总距离
+   - 站点数
+
+2. 方案标签
+   - 当前策略类型
+
+3. 路线时间轴 / 站点列表
+   - POI 名称
+   - 到达/离开时间
+   - 停留时长
+   - 价格/评分
+   - 推荐理由
+   - 风险提醒
+
+4. 路线说明
    - 自然语言解释路线设计逻辑
 
-5. **二次修改输入区**
-   - 简洁的修改意见输入框
-   - "应用修改"按钮
+5. 二次修改输入
+   - 用户输入修改意见
+   - 触发重新规划
 
-6. **操作按钮**
-   - "重新规划"按钮
-   - "返回修改需求"按钮
+6. 操作按钮
+   - 返回
+   - 重新规划
 
-## 页面流程
+---
 
-### 首次生成流程
-```
-首页输入需求 -> 点击"生成路线" -> Loading态 -> 跳转到结果页
-```
+## 4. 页面流程
 
-### 二次修改流程
-```
-结果页输入修改意见 -> 点击"应用修改" -> Loading态 -> 刷新结果页
+### 首次生成
+
+```text
+输入页 -> 点击生成路线 -> Loading -> 结果页
 ```
 
-### 重新开始流程
-```
-结果页点击"重新规划"或"返回修改需求" -> 返回首页
-```
+### 二次修改
 
-## 技术栈
-
-- **Flutter**: 3.12.0+
-- **Dart**: SDK 3.12.0
-- **HTTP Client**: http 1.2.0
-- **State Management**: StatefulWidget (当前阶段)
-- **UI Framework**: Material Design 3
-
-## 运行项目
-
-### 1. 安装依赖
-```bash
-flutter pub get
+```text
+结果页输入修改意见 -> 应用修改 -> Loading -> 刷新结果页
 ```
 
-### 2. 运行开发版本
-```bash
-flutter run
+### 重新开始
+
+```text
+结果页返回 -> 回到输入页
 ```
 
-### 3. 构建调试 APK
-```bash
-flutter build apk --debug
-```
+---
 
-### 4. 构建发布 APK
-```bash
-flutter build apk --release
-```
+## 5. 技术栈
 
-## 注意事项
+- Flutter 3.x
+- Dart 3.x
+- http 1.2.0
+- StatefulWidget
+- Material Design 3
 
-1. **Mock数据**: 当前版本在无法连接后端时会自动使用mock数据，确保页面流程可以完整演示。
+---
 
-2. **API端点**: 
-   - 后端地址配置在 `route_api_service.dart` 中
-   - 当前默认: `http://localhost:8000/api`
-   - 需要根据实际部署环境修改
+## 6. 当前状态
 
-3. **地图集成**: 第一阶段先不做地图功能，在结果页预留"地图预览卡占位"。
+当前版本已经能做到：
 
-4. **状态管理**: 当前使用简单的StatefulWidget，第二阶段可以考虑引入Provider或Riverpod。
+- 自然语言输入路线需求
+- 生成路线结果页
+- 展示站点顺序、时间、预算、推荐理由、风险提醒
+- 支持结果页二次修改
+- 支持广州 / 上海双城测试
+- 后端不可用时自动降级为 mock 数据
 
-## 待优化项
+---
 
-- [ ] 添加错误边界和空状态处理
-- [ ] 完善颜色体系和视觉规范
-- [ ] 添加页面切换动画
-- [ ] 集成真实地图SDK
-- [ ] 优化加载态文案和体验
-- [ ] 添加更多交互反馈
-- [ ] 考虑状态管理方案（Provider/Riverpod/Bloc）
+## 7. 后续可继续补强的方向
 
-## 后端接口对接
+- 增加错误边界与空状态
+- 完善视觉规范和过渡动画
+- 集成真实地图 SDK
+- 引入更完善的状态管理方案
+- 提升修改路线的智能程度
 
-### 生成路线接口
-- **端点**: `POST /api/route/generate`
-- **请求体**:
-```json
-{
-  "query": "周六下午从广州塔出发，预算200，想喝咖啡、看展、吃饭",
-  "preferences": ["约会", "性价比"]
-}
-```
-
-### 修改路线接口
-- **端点**: `POST /api/route/modify`
-- **请求体**:
-```json
-{
-  "query": "太远了，换近一点的",
-  "original_query": "周六下午从广州塔出发...",
-  "current_route": { /* RouteResponse 对象 */ }
-}
-```
-
-## 开发者提示
-
-1. 所有UI组件都使用了圆角设计（borderRadius: 16-24）
-2. 颜色方案以黄色为主色（Color(0xFFF2C230)）
-3. 使用了渐变背景增强视觉效果
-4. 响应式布局，适配不同屏幕尺寸
-5. 代码遵循Material Design 3规范
