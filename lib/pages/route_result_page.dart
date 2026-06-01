@@ -124,6 +124,14 @@ class _RouteResultPageState extends State<RouteResultPage> {
                         const SizedBox(height: 18),
                         _buildStrategyCard(route),
                         const SizedBox(height: 18),
+                        if (route.routeOptions.isNotEmpty) ...[
+                          _buildOptionsCard(route),
+                          const SizedBox(height: 18),
+                        ],
+                        if (route.warnings.isNotEmpty) ...[
+                          _buildWarningsCard(route),
+                          const SizedBox(height: 18),
+                        ],
                         _buildRouteTimeline(route),
                         const SizedBox(height: 18),
                         _buildExplanationCard(route),
@@ -217,6 +225,8 @@ class _RouteResultPageState extends State<RouteResultPage> {
               _buildTag('城市：${widget.currentCity}'),
               if (widget.originalQuery.isNotEmpty) _buildTag('原始需求已保留'),
               if (route.strategyType != null) _buildTag('策略：${route.strategyType}'),
+              if (route.routeScore != null) _buildTag('评分：${(route.routeScore! * 100).round()}'),
+              if (route.travelTimeRatio != null) _buildTag('转场占比：${(route.travelTimeRatio! * 100).round()}%'),
             ],
           ),
           const SizedBox(height: 18),
@@ -316,6 +326,130 @@ class _RouteResultPageState extends State<RouteResultPage> {
               style: const TextStyle(
                 fontSize: 14,
                 color: Color(0xFF4B5563),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOptionsCard(RouteResponse route) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(15, 23, 42, 0.06),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '候选方案',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...route.routeOptions.take(3).map(
+                (option) => Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              option.strategyType,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${(option.routeScore * 100).round()} 分',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '¥${option.totalCost} · ${option.totalDuration} 分钟 · ${option.totalDistance.toStringAsFixed(1)} km · ${option.poiCount} 站',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                      ),
+                      if (option.stops.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          option.stops.join(' → '),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.4),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWarningsCard(RouteResponse route) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '执行提醒',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF92400E),
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...route.warnings.map(
+            (warning) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFD97706)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      warning,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF92400E), height: 1.4),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

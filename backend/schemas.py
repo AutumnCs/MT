@@ -35,8 +35,15 @@ class POI(BaseModel):
 
     sub_category: Optional[str] = None
     district: Optional[str] = None
+    business_area: Optional[str] = None
     visit_duration: int = 90
     business_hours: Optional[str] = None
+    best_visit_periods: List[str] = Field(default_factory=list)
+    review_keywords: List[str] = Field(default_factory=list)
+    positive_reviews: List[str] = Field(default_factory=list)
+    negative_reviews: List[str] = Field(default_factory=list)
+    queue_profile: Dict[str, int] = Field(default_factory=dict)
+    review_signals: Dict[str, float] = Field(default_factory=dict)
     suitable_for: List[str] = Field(default_factory=list)
     queue_level: int = Field(default=2, ge=1, le=5)
     photo_score: int = Field(default=3, ge=1, le=5)
@@ -103,5 +110,9 @@ class RouteResponse(BaseModel):
     stops: List[RouteStop]
     route_explanation: str
     strategy_type: Optional[str] = None
+    route_score: Optional[float] = None
+    travel_time_ratio: Optional[float] = None
+    warnings: List[str] = Field(default_factory=list)
+    route_options: List[Dict[str, Any]] = Field(default_factory=list)
     original_query: Optional[str] = None
     generated_at: Optional[str] = None

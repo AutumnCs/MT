@@ -358,6 +358,10 @@ class RouteResponse {
   final List<RouteStop> stops;
   final String routeExplanation;
   final String? strategyType;
+  final double? routeScore;
+  final double? travelTimeRatio;
+  final List<String> warnings;
+  final List<RouteOption> routeOptions;
   final String? originalQuery;
   final String? generatedAt;
 
@@ -372,6 +376,10 @@ class RouteResponse {
     required this.stops,
     required this.routeExplanation,
     this.strategyType,
+    this.routeScore,
+    this.travelTimeRatio,
+    this.warnings = const [],
+    this.routeOptions = const [],
     this.originalQuery,
     this.generatedAt,
   });
@@ -396,6 +404,12 @@ class RouteResponse {
       stops: stops,
       routeExplanation: json['route_explanation'] ?? json['summary'] ?? '',
       strategyType: json['strategy_type'],
+      routeScore: (json['route_score'] as num?)?.toDouble(),
+      travelTimeRatio: (json['travel_time_ratio'] as num?)?.toDouble(),
+      warnings: List<String>.from(json['warnings'] ?? const []),
+      routeOptions: (json['route_options'] as List<dynamic>? ?? const [])
+          .map((item) => RouteOption.fromJson(Map<String, dynamic>.from(item)))
+          .toList(),
       originalQuery: json['original_query'],
       generatedAt: json['generated_at'],
     );
@@ -413,8 +427,56 @@ class RouteResponse {
       'stops': stops.map((item) => item.toJson()).toList(),
       'route_explanation': routeExplanation,
       'strategy_type': strategyType,
+      'route_score': routeScore,
+      'travel_time_ratio': travelTimeRatio,
+      'warnings': warnings,
+      'route_options': routeOptions.map((item) => item.toJson()).toList(),
       'original_query': originalQuery,
       'generated_at': generatedAt,
+    };
+  }
+}
+
+class RouteOption {
+  final String strategyType;
+  final double routeScore;
+  final int totalCost;
+  final int totalDuration;
+  final double totalDistance;
+  final int poiCount;
+  final List<String> stops;
+
+  RouteOption({
+    required this.strategyType,
+    required this.routeScore,
+    required this.totalCost,
+    required this.totalDuration,
+    required this.totalDistance,
+    required this.poiCount,
+    required this.stops,
+  });
+
+  factory RouteOption.fromJson(Map<String, dynamic> json) {
+    return RouteOption(
+      strategyType: json['strategy_type'] ?? '',
+      routeScore: (json['route_score'] ?? 0).toDouble(),
+      totalCost: json['total_cost'] ?? 0,
+      totalDuration: json['total_duration'] ?? 0,
+      totalDistance: (json['total_distance'] ?? 0).toDouble(),
+      poiCount: json['poi_count'] ?? 0,
+      stops: List<String>.from(json['stops'] ?? const []),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'strategy_type': strategyType,
+      'route_score': routeScore,
+      'total_cost': totalCost,
+      'total_duration': totalDuration,
+      'total_distance': totalDistance,
+      'poi_count': poiCount,
+      'stops': stops,
     };
   }
 }

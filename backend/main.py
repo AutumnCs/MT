@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 import constraint_checker
 import intent_parser
+import llm_intent_client
 import poi_retriever
 import prompt_templates
 import response_generator
@@ -54,7 +55,7 @@ CITY_HINTS = {
 async def parse_intent(request: IntentParseRequest):
     if request.llm_draft is not None:
         return intent_parser.normalize_llm_intent(request.llm_draft, request.query)
-    return intent_parser.parse_intent(request.query, request.city)
+    return _parse_intent_with_optional_llm(request.query, request.city)
 
 @app.post("/api/intent/prompt")
 async def build_intent_prompt(request: IntentParseRequest):
@@ -90,10 +91,17 @@ def _infer_city_from_route(current_route: Any) -> Optional[str]:
     return None
 
 
+def _parse_intent_with_optional_llm(query: str, city: Optional[str] = None) -> schemas.ParsedIntent:
+    parsed_intent = llm_intent_client.parse_intent_with_llm(query, city)
+    if parsed_intent is not None:
+        return parsed_intent
+    return intent_parser.parse_intent(query, city)
+
+
 @app.post("/api/route/generate", response_model=schemas.RouteResponse)
 async def generate_route(request: RouteRequest):
     try:
-        parsed_intent = intent_parser.parse_intent(request.query, request.city)
+        parsed_intent = _parse_intent_with_optional_llm(request.query, request.city)
         if request.preferences:
             intent_parser.apply_ui_preferences(parsed_intent, request.preferences)
         valid, errors = constraint_checker.validate_intent(parsed_intent)
@@ -115,7 +123,15 @@ async def generate_route(request: RouteRequest):
 async def modify_route(request: ModifyRequest):
     try:
         inferred_city = _infer_city_from_route(request.current_route)
-        parsed_intent = intent_parser.parse_intent(request.query, inferred_city)
+        combined_query = "\n".join(
+            part
+            for part in [
+                request.original_query,
+                f"修改要求：{request.query}" if request.query else None,
+            ]
+            if part
+        )
+        parsed_intent = _parse_intent_with_optional_llm(combined_query or request.query, inferred_city)
         parsed_intent.current_route = request.current_route
 
         valid, errors = constraint_checker.validate_intent(parsed_intent)

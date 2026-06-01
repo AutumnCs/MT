@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import review_analyzer
 from schemas import POI, ParsedIntent
 
 
 CATEGORY_LABELS = {
-    "coffee": "??",
-    "food": "??",
-    "museum": "???",
-    "exhibition": "??",
-    "scene": "??",
-    "street": "??",
-    "shopping": "??",
-    "park": "??",
-    "night": "??",
+    "coffee": "咖啡",
+    "food": "餐饮",
+    "museum": "博物馆",
+    "exhibition": "展览",
+    "scene": "景点",
+    "street": "街区",
+    "shopping": "购物",
+    "park": "公园",
+    "night": "夜景",
 }
 
 
@@ -46,28 +47,33 @@ def _budget_score(poi: POI, intent: ParsedIntent) -> float:
 
 def _preference_match_score(poi: POI, intent: ParsedIntent) -> float:
     score = 0.4
-    all_tags = " ".join(poi.tags + poi.suitable_for + [poi.category, poi.sub_category or ""])
+    all_tags = " ".join(
+        poi.tags
+        + poi.suitable_for
+        + poi.review_keywords
+        + [poi.category, poi.sub_category or "", poi.business_area or "", poi.description]
+    )
 
     for keyword in intent.intent_tags:
         if keyword and keyword in all_tags:
             score += 0.12
 
     if intent.prefer_couple:
-        score += (poi.date_score / 5) * 0.20
+        score += review_analyzer.signal(poi, "date") * 0.20
     if intent.prefer_photo:
-        score += (poi.photo_score / 5) * 0.18
+        score += review_analyzer.signal(poi, "photo") * 0.18
     if intent.prefer_food:
-        score += (poi.food_score / 5) * 0.18
+        score += review_analyzer.signal(poi, "food") * 0.18
     if intent.prefer_culture:
-        score += (poi.culture_score / 5) * 0.18
+        score += review_analyzer.signal(poi, "culture") * 0.18
     if intent.prefer_local_feature:
-        score += (poi.local_feature_score / 5) * 0.18
+        score += review_analyzer.signal(poi, "local_feature") * 0.18
     if intent.prefer_rainy_day:
-        score += (poi.rainy_day_score / 5) * 0.12
+        score += review_analyzer.signal(poi, "rainy_day") * 0.12
     if intent.prefer_night_view:
-        score += (0.8 if poi.category == "night" else poi.photo_score / 5) * 0.15
+        score += (0.9 if poi.category == "night" else review_analyzer.signal(poi, "photo")) * 0.15
     if intent.prefer_quiet:
-        score += (1 - poi.queue_level / 5) * 0.10
+        score += review_analyzer.signal(poi, "quiet") * 0.10
 
     return _clip(score)
 
@@ -75,21 +81,21 @@ def _preference_match_score(poi: POI, intent: ParsedIntent) -> float:
 def _semantic_score(poi: POI, intent: ParsedIntent) -> float:
     values = []
     if intent.prefer_photo:
-        values.append(poi.photo_score / 5)
+        values.append(review_analyzer.signal(poi, "photo"))
     if intent.prefer_couple:
-        values.append(poi.date_score / 5)
+        values.append(review_analyzer.signal(poi, "date"))
     if intent.prefer_food:
-        values.append(poi.food_score / 5)
+        values.append(review_analyzer.signal(poi, "food"))
     if intent.prefer_culture:
-        values.append(poi.culture_score / 5)
+        values.append(review_analyzer.signal(poi, "culture"))
     if intent.prefer_local_feature:
-        values.append(poi.local_feature_score / 5)
+        values.append(review_analyzer.signal(poi, "local_feature"))
     if intent.prefer_rainy_day:
-        values.append(poi.rainy_day_score / 5)
+        values.append(review_analyzer.signal(poi, "rainy_day"))
     if intent.prefer_night_view:
-        values.append(0.9 if poi.category == "night" else poi.photo_score / 5)
+        values.append(0.9 if poi.category == "night" else review_analyzer.signal(poi, "photo"))
     if intent.prefer_quiet:
-        values.append(1 - poi.queue_level / 5)
+        values.append(review_analyzer.signal(poi, "quiet"))
 
     if not values:
         return 0.5
@@ -114,7 +120,7 @@ def _time_suitability_score(poi: POI, intent: ParsedIntent) -> float:
 
 
 def _queue_penalty(poi: POI, intent: ParsedIntent) -> float:
-    queue_score = poi.queue_level / 5
+    queue_score = review_analyzer.signal(poi, "queue_risk", poi.queue_level / 5)
     penalty = queue_score
     if intent.avoid_queue:
         penalty *= 1.5
@@ -122,7 +128,7 @@ def _queue_penalty(poi: POI, intent: ParsedIntent) -> float:
 
 
 def _crowd_penalty(poi: POI, intent: ParsedIntent) -> float:
-    crowd_score = poi.queue_level / 5
+    crowd_score = review_analyzer.signal(poi, "crowd_risk", poi.queue_level / 5)
     penalty = crowd_score
     if intent.avoid_crowded or intent.prefer_quiet:
         penalty *= 1.3
@@ -158,32 +164,32 @@ def _generate_recommend_reason(poi: POI, intent: ParsedIntent, scores: dict[str,
     label = CATEGORY_LABELS.get(poi.category, poi.category)
 
     if scores["category_match_score"] >= 0.95:
-        reasons.append(f"???????{label}??")
+        reasons.append(f"匹配你想要的{label}体验")
     if intent.prefer_photo and poi.photo_score >= 4:
-        reasons.append("???????????")
+        reasons.append("拍照打卡表现好")
     if intent.prefer_couple and poi.date_score >= 4:
-        reasons.append("??????")
+        reasons.append("约会氛围较合适")
     if intent.prefer_food and poi.food_score >= 4:
-        reasons.append("??????")
+        reasons.append("美食体验分较高")
     if intent.prefer_culture and poi.culture_score >= 4:
-        reasons.append("??????")
+        reasons.append("文化内容更丰富")
     if intent.prefer_local_feature and poi.local_feature_score >= 4:
-        reasons.append("????????")
+        reasons.append("本地特色比较明显")
     if intent.prefer_night_view and poi.category == "night":
-        reasons.append("??????")
+        reasons.append("适合安排夜景")
     if intent.prefer_quiet and poi.queue_level <= 2:
-        reasons.append("??????")
+        reasons.append("排队和拥挤风险较低")
     if scores["budget_score"] >= 0.85:
-        reasons.append("??????")
+        reasons.append("预算匹配度较高")
     if poi.price == 0:
-        reasons.append("????")
+        reasons.append("免费或低成本")
     if scores["queue_penalty"] >= 0.7:
-        reasons.append("??????????")
+        reasons.append("但高峰期可能需要排队")
 
     if not reasons:
-        reasons.append("?????????????????")
+        reasons.append("综合评分和路线衔接都比较稳")
 
-    return "?".join(reasons) + "?"
+    return "，".join(reasons) + "。"
 
 
 def rank_pois(pois: list[POI], intent: ParsedIntent, top_k: int = 30) -> list[dict]:
