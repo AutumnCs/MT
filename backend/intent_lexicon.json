@@ -1,0 +1,67 @@
+{
+  "cities": [
+    {
+      "name": "广州",
+      "aliases": ["广州", "广州塔", "花城广场", "海心沙", "珠江新城", "白云山", "北京路", "上下九"]
+    },
+    {
+      "name": "上海",
+      "aliases": ["上海", "外滩", "豫园", "东方明珠", "武康路", "思南路", "陆家嘴", "南京路", "新天地"]
+    }
+  ],
+  "categories": [
+    {"tag": "coffee", "label": "咖啡", "aliases": ["咖啡", "咖啡店", "下午茶"]},
+    {"tag": "food", "label": "餐饮", "aliases": ["吃饭", "晚饭", "午饭", "美食", "餐厅", "火锅", "小吃", "甜品", "本帮菜", "粤菜", "吃点好的", "吃好的", "吃好点"]},
+    {"tag": "museum", "label": "博物馆", "aliases": ["博物馆", "展馆"]},
+    {"tag": "exhibition", "label": "展览", "aliases": ["看展", "展览", "美术馆", "艺术馆"]},
+    {"tag": "scene", "label": "景点", "aliases": ["景点", "观光", "游览"]},
+    {"tag": "street", "label": "街区", "aliases": ["街道", "老街", "马路", "散步"]},
+    {"tag": "shopping", "label": "购物", "aliases": ["购物", "逛街", "商场"]},
+    {"tag": "park", "label": "公园", "aliases": ["公园", "散步", "绿地"]},
+    {"tag": "night", "label": "夜景", "aliases": ["夜景", "看夜景", "夜游"]}
+  ],
+  "preferences": [
+    {"tag": "couple", "label": "约会", "aliases": ["约会", "浪漫", "情侣"]},
+    {"tag": "photo", "label": "拍照", "aliases": ["拍照", "打卡", "出片", "摄影"]},
+    {"tag": "food", "label": "美食", "aliases": ["吃货", "美食", "好吃的", "吃点好的", "吃好的", "吃好点"]},
+    {"tag": "value", "label": "性价比", "aliases": ["性价比", "划算", "便宜点", "省钱"]},
+    {"tag": "culture", "label": "文艺", "aliases": ["文化", "历史", "博物馆", "艺术"]},
+    {"tag": "local_feature", "label": "本地特色", "aliases": ["本地特色", "老字号", "本帮菜", "地方特色"]},
+    {"tag": "night_view", "label": "夜景", "aliases": ["夜景", "晚上", "夜晚", "灯光"]},
+    {"tag": "quiet", "label": "安静", "aliases": ["安静", "轻松", "休闲", "不吵"]},
+    {"tag": "rainy_day", "label": "雨天", "aliases": ["雨天", "下雨", "室内", "避雨"]},
+    {"tag": "relaxed", "label": "轻松路线", "aliases": ["轻松路线", "轻松", "松弛", "别太赶"]}
+  ],
+  "avoids": [
+    {"tag": "queue", "label": "不想排队", "aliases": ["不想排队", "别排太久", "排太久", "排太久队", "不想等位", "不要排太久", "别等太久"]},
+    {"tag": "crowded", "label": "避开人多", "aliases": ["人少", "不拥挤", "避开人多", "清净"]},
+    {"tag": "spicy", "label": "忌辣", "aliases": ["不要辣", "不吃辣", "忌辣"]},
+    {"tag": "far", "label": "别太远", "aliases": ["太远", "近一点", "别太远", "不要太绕", "别太绕"]}
+  ],
+  "transports": [
+    {"tag": "metro", "label": "地铁", "aliases": ["地铁", "地铁优先"]},
+    {"tag": "taxi", "label": "打车", "aliases": ["打车", "出租车"]},
+    {"tag": "walking", "label": "步行", "aliases": ["步行", "走路"]}
+  ],
+  "display_labels": {
+    "couple": "约会",
+    "photo": "拍照",
+    "queue": "不想排队",
+    "value": "性价比",
+    "relaxed": "轻松路线",
+    "food": "美食",
+    "culture": "文艺",
+    "night_view": "夜景",
+    "local_feature": "本地特色",
+    "quiet": "安静",
+    "rainy_day": "雨天",
+    "coffee": "咖啡",
+    "museum": "博物馆",
+    "exhibition": "展览",
+    "scene": "景点",
+    "street": "街区",
+    "shopping": "购物",
+    "park": "公园",
+    "night": "夜景"
+  }
+}

@@ -1,0 +1,36 @@
+[
+  {
+    "id": "gz-coffee-001",
+    "name": "M Stand 广州塔店",
+    "category": "coffee",
+    "sub_category": "specialty_coffee",
+    "district": "海珠区",
+    "city": "广州",
+    "address": "广州市海珠区广州塔周边",
+    "latitude": 23.1086,
+    "longitude": 113.3247,
+    "price": 38,
+    "visit_duration": 45,
+    "rating": 4.6,
+    "business_hours": "10:00-22:00",
+    "tags": [
+      "咖啡",
+      "拍照",
+      "景观"
+    ],
+    "suitable_for": [
+      "情侣",
+      "朋友",
+      "独自"
+    ],
+    "queue_level": 2,
+    "photo_score": 5,
+    "date_score": 4,
+    "food_score": 3,
+    "culture_score": 2,
+    "local_feature_score": 2,
+    "rainy_day_score": 4,
+    "indoor_outdoor": "indoor",
+    "description": "适合从广州塔周边出发的轻松咖啡站。"
+  }
+]

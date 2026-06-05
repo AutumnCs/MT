@@ -1,0 +1,23 @@
+{
+  "display_labels": {
+    "couple": "约会",
+    "photo": "拍照",
+    "queue": "不想排队",
+    "value": "性价比",
+    "relaxed": "轻松路线",
+    "food": "美食",
+    "culture": "文艺",
+    "night_view": "夜景",
+    "local_feature": "本地特色",
+    "quiet": "安静",
+    "rainy_day": "雨天",
+    "coffee": "咖啡",
+    "museum": "博物馆",
+    "exhibition": "展览",
+    "scene": "景点",
+    "street": "街区",
+    "shopping": "购物",
+    "park": "公园",
+    "night": "夜景"
+  }
+}

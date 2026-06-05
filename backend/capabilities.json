@@ -1,0 +1,291 @@
+{
+  "version": "1.1",
+  "updated_at": "2026-06-04",
+  "capabilities": [
+    {
+      "name": "intent_parsing",
+      "category": "core",
+      "description": "Turn free-form travel intent into a structured intent draft.",
+      "route_signals": [
+        "今天去哪",
+        "帮我规划",
+        "想去哪里玩",
+        "帮我看一下路线",
+        "自然语言转结构化"
+      ],
+      "aliases": [
+        "意图",
+        "解析",
+        "需求理解"
+      ],
+      "canonical_tags": [
+        "food",
+        "coffee",
+        "photo",
+        "culture",
+        "relaxed",
+        "night_view",
+        "queue",
+        "rainy_day",
+        "local_feature"
+      ],
+      "examples": [
+        "周末想轻松一点，吃点好的，再喝杯咖啡，不想排队",
+        "下午两点从广州塔出发，想约会、看展、吃饭，晚上九点前结束"
+      ],
+      "anti_examples": [
+        "把路线再近一点",
+        "高德地图里这个地方怎么去"
+      ],
+      "inputs": ["query", "city", "llm_draft"],
+      "outputs": ["ParsedIntent"],
+      "constraints": [
+        "keep unknown clues",
+        "preserve hard constraints",
+        "do not invent new canonical tags"
+      ],
+      "fallbacks": ["rule parser"],
+      "priority": 90,
+      "min_confidence": 0.72,
+      "tests": ["first_use_relaxed_food_coffee", "freeform_unknown_clue"]
+    },
+    {
+      "name": "route_generation",
+      "category": "planning",
+      "description": "Generate a complete route plan from a structured intent and POI candidates.",
+      "route_signals": [
+        "生成路线",
+        "规划路线",
+        "串联",
+        "安排一下",
+        "路线方案",
+        "推荐路线"
+      ],
+      "aliases": [
+        "路线",
+        "行程",
+        "方案"
+      ],
+      "canonical_tags": [
+        "balanced",
+        "preference_focused",
+        "compact"
+      ],
+      "examples": [
+        "帮我生成一条上海半天路线，想喝咖啡再看展，别太绕",
+        "安排一个广州周末路线，预算 200，最好能吃饭加拍照"
+      ],
+      "anti_examples": [
+        "太远了，换近一点",
+        "这个地方的坐标是多少"
+      ],
+      "inputs": ["ParsedIntent", "POI list"],
+      "outputs": ["RouteResponse"],
+      "constraints": [
+        "respect budget",
+        "respect time window",
+        "prefer at least 3 POIs when feasible"
+      ],
+      "fallbacks": ["compact route", "single-point route"],
+      "priority": 85,
+      "min_confidence": 0.7,
+      "tests": ["guangzhou_date_light", "shanghai_photo_local"]
+    },
+    {
+      "name": "route_modification",
+      "category": "planning",
+      "description": "Modify an existing route based on follow-up user edits.",
+      "route_signals": [
+        "太远了",
+        "换近一点",
+        "不要排队",
+        "预算低一点",
+        "改成室内点",
+        "再轻松一点"
+      ],
+      "aliases": [
+        "修改",
+        "调整",
+        "重新安排"
+      ],
+      "canonical_tags": [
+        "modify:compact",
+        "modify:budget",
+        "modify:queue",
+        "modify:photo",
+        "modify:date",
+        "modify:rainy_day",
+        "modify:relaxed",
+        "modify:food",
+        "modify:night",
+        "modify:keep_current"
+      ],
+      "examples": [
+        "太远了，换近一点，不要排队，室内优先",
+        "预算低一点，少几个站点也行"
+      ],
+      "anti_examples": [
+        "今天下午两点从广州塔出发，想约会",
+        "高德地图搜一下这个店"
+      ],
+      "inputs": ["query", "current_route", "original_query"],
+      "outputs": ["ParsedIntent", "RouteResponse"],
+      "constraints": ["inherit context when possible"],
+      "fallbacks": ["replan from current route"],
+      "priority": 80,
+      "min_confidence": 0.72,
+      "tests": ["modify_close_queue", "modify_budget"]
+    },
+    {
+      "name": "map_resolution",
+      "category": "tools",
+      "description": "Resolve address, POI, or coordinates using map provider capabilities.",
+      "route_signals": [
+        "高德",
+        "地图",
+        "坐标",
+        "地理编码",
+        "逆地理",
+        "poi搜索",
+        "路线距离"
+      ],
+      "aliases": [
+        "地图",
+        "坐标",
+        "路线",
+        "位置"
+      ],
+      "canonical_tags": [
+        "geocode",
+        "reverse_geocode",
+        "poi_search",
+        "route",
+        "preview"
+      ],
+      "examples": [
+        "把这个地址转成坐标",
+        "帮我查一下这个 POI 到另一个 POI 的路线"
+      ],
+      "anti_examples": [
+        "帮我规划一条周末约会路线",
+        "把预算调低一点"
+      ],
+      "inputs": ["address", "poi", "coordinates"],
+      "outputs": ["map preview", "route estimate", "poi candidates"],
+      "constraints": ["use local fallback when key missing"],
+      "fallbacks": ["local distance estimation"],
+      "priority": 70,
+      "min_confidence": 0.68,
+      "tests": ["map_status_local_fallback"]
+    },
+    {
+      "name": "route_explanation",
+      "category": "explain",
+      "description": "Explain why the chosen route fits the current intent.",
+      "route_signals": [
+        "为什么这么选",
+        "解释一下",
+        "为什么推荐",
+        "路线说明",
+        "讲一下原因"
+      ],
+      "aliases": [
+        "解释",
+        "原因",
+        "说明"
+      ],
+      "canonical_tags": [
+        "route_explanation",
+        "reasoning",
+        "summary"
+      ],
+      "examples": [
+        "帮我解释一下为什么这条路线适合约会和拍照",
+        "这条路线为什么比别的更轻松"
+      ],
+      "anti_examples": [
+        "帮我直接生成路线",
+        "把这个地点改近一点"
+      ],
+      "inputs": ["route", "intent_summary"],
+      "outputs": ["explanation"],
+      "constraints": ["must not change route decisions"],
+      "fallbacks": ["summary only"],
+      "priority": 60,
+      "min_confidence": 0.68,
+      "tests": ["explain_route_smoke"]
+    },
+    {
+      "name": "knowledge_explanation",
+      "category": "explain",
+      "description": "Explain how the system understands aliases, tags, and unknown clues.",
+      "route_signals": [
+        "知识解释",
+        "词典",
+        "同义词",
+        "怎么归类",
+        "为什么算拍照"
+      ],
+      "aliases": [
+        "解释",
+        "规则",
+        "词典"
+      ],
+      "canonical_tags": [
+        "knowledge_explanation"
+      ],
+      "examples": [
+        "为什么“出片”会归到 photo",
+        "系统怎么理解“松弛感”"
+      ],
+      "anti_examples": [
+        "帮我规划一条路线",
+        "把路线再近一点"
+      ],
+      "inputs": ["query", "trace"],
+      "outputs": ["explanation"],
+      "constraints": ["should be user facing", "must avoid exposing internal secrets"],
+      "fallbacks": ["show trace summary"],
+      "priority": 50,
+      "min_confidence": 0.66,
+      "tests": ["knowledge_explanation_smoke"]
+    },
+    {
+      "name": "offline_evaluation",
+      "category": "eval",
+      "description": "Run the offline regression suite and report pass/fail results.",
+      "route_signals": [
+        "回归",
+        "体检",
+        "评测",
+        "离线测试",
+        "质量检查"
+      ],
+      "aliases": [
+        "回归",
+        "测试",
+        "评估"
+      ],
+      "canonical_tags": [
+        "intent",
+        "modify",
+        "unknown"
+      ],
+      "examples": [
+        "跑一下离线回归",
+        "帮我看这次改动有没有把旧案例弄坏"
+      ],
+      "anti_examples": [
+        "帮我生成路线",
+        "把这个 POI 地图化"
+      ],
+      "inputs": ["eval_cases.json"],
+      "outputs": ["report"],
+      "constraints": ["must not break passing cases"],
+      "fallbacks": ["limit to subset"],
+      "priority": 40,
+      "min_confidence": 0.65,
+      "tests": ["all_cases"]
+    }
+  ]
+}

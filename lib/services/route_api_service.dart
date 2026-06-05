@@ -347,7 +347,107 @@ class RouteApiService {
       routeExplanation: '当前显示的是本地 mock 数据，用于后端异常时保障演示流程不中断。',
       strategyType: isModified ? '重新规划' : '稳妥方案',
       generatedAt: DateTime.now().toIso8601String(),
+      mapPreview: _buildMockMapPreview(stops),
+      trace: {
+        'version': 'local-mock',
+        'parse_source': 'mock',
+        'matched_capabilities': ['route_generation'],
+        'recognized_signals': [],
+        'unclassified_clues': [],
+        'hard_constraints': [],
+        'preferences': [],
+        'avoid': [],
+        'required_categories': stops.map((stop) => stop.poi.category).toSet().toList(),
+        'poi_count': stops.length,
+        'route_score': null,
+        'map_enabled': false,
+        'map_provider': 'local',
+      },
     );
+  }
+
+  Map<String, dynamic> _buildMockMapPreview(List<RouteStop> stops) {
+    final markers = <Map<String, dynamic>>[];
+    final polyline = <Map<String, dynamic>>[];
+    for (var i = 0; i < stops.length; i++) {
+      final stop = stops[i];
+      markers.add({
+        'id': stop.poi.id,
+        'name': stop.poi.name,
+        'category': stop.poi.category,
+        'city': stop.poi.city,
+        'latitude': stop.poi.latitude,
+        'longitude': stop.poi.longitude,
+        'label': i + 1,
+        'address': stop.poi.address,
+      });
+      polyline.add({
+        'latitude': stop.poi.latitude,
+        'longitude': stop.poi.longitude,
+      });
+    }
+
+    double? minLat;
+    double? maxLat;
+    double? minLng;
+    double? maxLng;
+    for (final marker in markers) {
+      final lat = (marker['latitude'] as num?)?.toDouble();
+      final lng = (marker['longitude'] as num?)?.toDouble();
+      if (lat == null || lng == null) continue;
+      minLat = minLat == null ? lat : (lat < minLat ? lat : minLat);
+      maxLat = maxLat == null ? lat : (lat > maxLat ? lat : maxLat);
+      minLng = minLng == null ? lng : (lng < minLng ? lng : minLng);
+      maxLng = maxLng == null ? lng : (lng > maxLng ? lng : maxLng);
+    }
+
+    Map<String, dynamic>? center;
+    if (markers.isNotEmpty) {
+      final avgLat = markers
+              .map((m) => (m['latitude'] as num).toDouble())
+              .reduce((a, b) => a + b) /
+          markers.length;
+      final avgLng = markers
+              .map((m) => (m['longitude'] as num).toDouble())
+              .reduce((a, b) => a + b) /
+          markers.length;
+      center = {
+        'latitude': avgLat,
+        'longitude': avgLng,
+      };
+    }
+
+    final segments = stops
+        .where((stop) => stop.travelFromPrevious != null)
+        .map(
+          (stop) => {
+            'mode': stop.travelFromPrevious?['mode'],
+            'distance_km': stop.travelFromPrevious?['distance_km'],
+            'duration_min': stop.travelFromPrevious?['duration_min'],
+            'cost': stop.travelFromPrevious?['cost'],
+            'source': stop.travelFromPrevious?['source'] ?? 'local',
+          },
+        )
+        .toList();
+
+    return {
+      'provider': 'local',
+      'enabled': false,
+      'mode': 'walking',
+      'route_title': 'mock-map-preview',
+      'route_summary': '本地 mock 路线预览',
+      'center': center,
+      'bounds': {
+        'min_latitude': minLat,
+        'max_latitude': maxLat,
+        'min_longitude': minLng,
+        'max_longitude': maxLng,
+      },
+      'markers': markers,
+      'polyline': polyline,
+      'segments': segments,
+      'point_count': markers.length,
+    };
   }
 
   void dispose() {

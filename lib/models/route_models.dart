@@ -1,3 +1,14 @@
+import 'dart:math';
+
+class RouteSessionManager {
+  static String? _sessionId;
+
+  static String get sessionId {
+    _sessionId ??= 'session-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(1 << 32)}';
+    return _sessionId!;
+  }
+}
+
 class IntentPromptBundle {
   final String systemPrompt;
   final String userPrompt;
@@ -363,7 +374,16 @@ class RouteResponse {
   final List<String> warnings;
   final List<RouteOption> routeOptions;
   final String? originalQuery;
+  final String? intentSummary;
+  final String? parseSource;
+  final List<String> appliedPreferences;
   final String? generatedAt;
+  final Map<String, dynamic>? mapPreview;
+  final Map<String, dynamic>? trace;
+  final bool clarificationNeeded;
+  final String? clarificationQuestion;
+  final List<String> clarificationOptions;
+  final String? clarificationReason;
 
   RouteResponse({
     required this.title,
@@ -381,7 +401,16 @@ class RouteResponse {
     this.warnings = const [],
     this.routeOptions = const [],
     this.originalQuery,
+    this.intentSummary,
+    this.parseSource,
+    this.appliedPreferences = const [],
     this.generatedAt,
+    this.mapPreview,
+    this.trace,
+    this.clarificationNeeded = false,
+    this.clarificationQuestion,
+    this.clarificationOptions = const [],
+    this.clarificationReason,
   });
 
   factory RouteResponse.fromJson(Map<String, dynamic> json) {
@@ -411,7 +440,16 @@ class RouteResponse {
           .map((item) => RouteOption.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
       originalQuery: json['original_query'],
+      intentSummary: json['intent_summary'],
+      parseSource: json['parse_source'],
+      appliedPreferences: List<String>.from(json['applied_preferences'] ?? const []),
       generatedAt: json['generated_at'],
+      mapPreview: json['map_preview'] == null ? null : Map<String, dynamic>.from(json['map_preview']),
+      trace: json['trace'] == null ? null : Map<String, dynamic>.from(json['trace']),
+      clarificationNeeded: json['clarification_needed'] ?? false,
+      clarificationQuestion: json['clarification_question'],
+      clarificationOptions: List<String>.from(json['clarification_options'] ?? const []),
+      clarificationReason: json['clarification_reason'],
     );
   }
 
@@ -432,7 +470,16 @@ class RouteResponse {
       'warnings': warnings,
       'route_options': routeOptions.map((item) => item.toJson()).toList(),
       'original_query': originalQuery,
+      'intent_summary': intentSummary,
+      'parse_source': parseSource,
+      'applied_preferences': appliedPreferences,
       'generated_at': generatedAt,
+      'map_preview': mapPreview,
+      'trace': trace,
+      'clarification_needed': clarificationNeeded,
+      'clarification_question': clarificationQuestion,
+      'clarification_options': clarificationOptions,
+      'clarification_reason': clarificationReason,
     };
   }
 }
@@ -485,11 +532,13 @@ class RouteRequest {
   final String query;
   final List<String>? preferences;
   final String? city;
+  final String? sessionId;
 
   RouteRequest({
     required this.query,
     this.preferences,
     this.city,
+    this.sessionId,
   });
 
   Map<String, dynamic> toJson() {
@@ -497,6 +546,7 @@ class RouteRequest {
       'query': query,
       'preferences': preferences ?? [],
       'city': city,
+      'session_id': sessionId ?? RouteSessionManager.sessionId,
     };
   }
 }
@@ -505,11 +555,13 @@ class ModifyRequest {
   final String query;
   final String? originalQuery;
   final Map<String, dynamic>? currentRoute;
+  final String? sessionId;
 
   ModifyRequest({
     required this.query,
     this.originalQuery,
     this.currentRoute,
+    this.sessionId,
   });
 
   Map<String, dynamic> toJson() {
@@ -517,6 +569,7 @@ class ModifyRequest {
       'query': query,
       'original_query': originalQuery,
       'current_route': currentRoute,
+      'session_id': sessionId ?? RouteSessionManager.sessionId,
     };
   }
 }

@@ -1,0 +1,28 @@
+{
+  "summary": {
+    "input": "G:\\MeituanAgent\\backend\\pois.json",
+    "output": "G:\\MeituanAgent\\backend\\pois.amap.enriched.json",
+    "report": "G:\\MeituanAgent\\backend\\pois.amap.report.json",
+    "total": 1,
+    "matched": 0,
+    "unmatched": 0,
+    "dry_run": 1,
+    "amap_enabled": false
+  },
+  "items": [
+    {
+      "id": "gz-coffee-001",
+      "name": "M Stand 广州塔店",
+      "city": "广州",
+      "status": "dry-run",
+      "confidence": 0.0,
+      "amap_id": null,
+      "amap_name": null,
+      "amap_address": null,
+      "latitude": null,
+      "longitude": null,
+      "adcode": null,
+      "notes": "gaode key not configured; dry-run only"
+    }
+  ]
+}

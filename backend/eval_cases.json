@@ -1,0 +1,262 @@
+[
+  {
+    "id": "guangzhou_date_light",
+    "type": "intent",
+    "query": "周六下午两点从广州塔出发，预算 200，想约会，想喝咖啡、看展、吃饭，不想太累，也不想排队，晚上 9 点前结束。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "couple"
+      ],
+      "required_categories": [
+        "coffee",
+        "exhibition",
+        "food"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_photo_local",
+    "type": "intent",
+    "query": "周末从外滩出发，想拍照、喝咖啡、吃本帮菜，路线不要太绕。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "photo",
+        "food",
+        "local_feature"
+      ],
+      "required_categories": [
+        "coffee",
+        "food"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "rainy_day_indoor",
+    "type": "intent",
+    "query": "上海今天下雨，想找室内一点的路线，最好能看展、喝咖啡、别太赶。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "rainy_day",
+        "culture",
+        "quiet"
+      ],
+      "required_categories": [
+        "exhibition",
+        "coffee"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "budget_food_fast",
+    "type": "intent",
+    "query": "广州晚上想吃点好吃的，再散步一下，预算 180，不想排太久队，尽快半天内搞定。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "food"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "required_categories": [
+        "food",
+        "street"
+      ],
+      "pace": "fast",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "night_view_mode",
+    "type": "intent",
+    "query": "上海晚上想看看夜景，顺便喝杯咖啡，最好地铁方便一点。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "night_view"
+      ],
+      "required_categories": [
+        "night",
+        "coffee"
+      ],
+      "transport_mode": "metro",
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "modify_close_queue",
+    "type": "modify",
+    "base_query": "周末从外滩出发，想拍照、喝咖啡、吃本帮菜，路线不要太绕。",
+    "modify_query": "太远了，换近一点，不要排队，室内优先。",
+    "expect": {
+      "avoid": [
+        "queue"
+      ],
+      "preferences": [
+        "photo",
+        "rainy_day"
+      ],
+      "pace": "slow",
+      "max_total_distance_ratio": 1.2
+    }
+  },
+  {
+    "id": "modify_budget",
+    "type": "modify",
+    "base_query": "周六下午两点从广州塔出发，预算 300，想约会，想喝咖啡、看展、吃饭，不想太累，也不想排队，晚上 9 点前结束。",
+    "modify_query": "预算低一点，最好控制在 150 左右，少一点站点也行。",
+    "expect": {
+      "max_total_duration_ratio": 0.7,
+      "max_poi_count": 2
+    }
+  },
+  {
+    "id": "first_use_relaxed_food_coffee",
+    "type": "intent",
+    "query": "第一次用，想轻松一点，别太赶，吃点好的，再喝杯咖啡，不想排队，上海，预算 100。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "relaxed",
+        "food"
+      ],
+      "required_categories": [
+        "food",
+        "coffee"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "first_use_photo_culture",
+    "type": "intent",
+    "query": "周末第一次试试，想拍照打卡，顺便看展，别太商业一点，广州，预算 150，再喝杯咖啡。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "photo",
+        "culture",
+        "local_feature"
+      ],
+      "required_categories": [
+        "exhibition",
+        "coffee"
+      ],
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "first_use_night_walk",
+    "type": "intent",
+    "query": "下班后随便逛逛，想看看夜景，喝杯咖啡，别太远，上海，预算 100。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "relaxed",
+        "night_view"
+      ],
+      "required_categories": [
+        "night",
+        "coffee"
+      ],
+      "avoid": [
+        "far"
+      ],
+      "pace": "slow",
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "freeform_unknown_clue",
+    "type": "intent",
+    "query": "我想要 vibe 感，上海随便逛逛，顺便喝杯咖啡，预算 100。",
+    "expect": {
+      "city": "上海",
+      "required_categories": [
+        "coffee"
+      ],
+      "unclassified_contains": [
+        "vibe 感"
+      ],
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "family_indoor_coffee",
+    "type": "intent",
+    "query": "周末想带娃，室内优先，最好能喝杯咖啡、吃点简餐，广州，别太累，预算 200。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "family",
+        "indoor",
+        "food",
+        "coffee",
+        "relaxed"
+      ],
+      "required_categories": [
+        "coffee",
+        "food"
+      ],
+      "pace": "slow",
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "friends_citywalk_evening",
+    "type": "intent",
+    "query": "下班后和朋友随便逛逛，想要 citywalk 感，再喝杯咖啡顺便看看夜景，上海，别太赶。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "friends",
+        "citywalk",
+        "coffee",
+        "night_view",
+        "relaxed"
+      ],
+      "required_categories": [
+        "coffee",
+        "night"
+      ],
+      "pace": "slow",
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "solo_shopping_indoor",
+    "type": "intent",
+    "query": "一个人想逛商场，室内一点，预算 200，别太远，上海。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "solo",
+        "shopping",
+        "indoor"
+      ],
+      "avoid": [
+        "far"
+      ],
+      "required_categories": [
+        "shopping"
+      ],
+      "min_poi_count": 1
+    }
+  }
+]
