@@ -43,6 +43,15 @@ class AmapClient:
             params["city"] = city
         return self._get("/v3/geocode/geo", params)
 
+    def reverse_geocode(self, longitude: float, latitude: float) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "key": self.key,
+            "location": f"{longitude},{latitude}",
+            "output": "JSON",
+            "extensions": "base",
+        }
+        return self._get("/v3/geocode/regeo", params)
+
     def search_poi(
         self,
         keyword: str,
@@ -51,6 +60,8 @@ class AmapClient:
         page: int = 1,
         offset: int = 5,
         types: str | None = None,
+        location: str | None = None,
+        radius: int | None = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
             "key": self.key,
@@ -63,6 +74,11 @@ class AmapClient:
             params["city"] = city
         if types:
             params["types"] = types
+        if location:
+            params["location"] = location
+            if radius:
+                params["radius"] = radius
+            return self._get("/v3/place/around", params)
         return self._get("/v3/place/text", params)
 
     def poi_detail(self, poi_id: str) -> dict[str, Any]:

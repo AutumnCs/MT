@@ -44,7 +44,7 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = """
   "start_time": "开始时间，格式建议为 HH:MM，可为空",
   "end_time": "结束时间，格式建议为 HH:MM，可为空",
   "budget": 预算金额，可为空,
-  "required_categories": ["coffee", "food", "exhibition"],
+  "required_categories": ["coffee", "food", "library", "exhibition"],
   "preferences": ["couple", "photo", "local_feature"],
   "avoid": ["queue", "crowded"],
   "pace": "slow | normal | fast",
@@ -59,7 +59,9 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = """
 3. 预算、时间、起点等能识别就填，不能识别就留空，不要编造。
 4. "约会、拍照、美食、文化、本地特色、夜景、安静、雨天"等属于偏好，不是硬约束。
 5. "不想排队、不要太远、避开拥挤"这类可以写进 avoid。
-6. 如果用户表达模糊，宁可留空，也不要强行猜一个很确定的值。
+6. "图书馆、阅读、自习、看书"应归入 required_categories 的 library。
+7. 如果用户明确表达顺序，例如"第一站先去图书馆、然后休息、晚饭、吃完后看夜景"，请把这些顺序要求保留在 notes 中。
+8. 如果用户表达模糊，宁可留空，也不要强行猜一个很确定的值。
 
 可参考的标准标签与常见同义表达：
 [[LEXICON_EXCERPT]]
@@ -84,7 +86,7 @@ ROUTE_MODIFICATION_SYSTEM_PROMPT = """
   "start_time": "开始时间，HH:MM，可为空",
   "end_time": "结束时间，HH:MM，可为空",
   "budget": 预算金额，可为空,
-  "required_categories": ["coffee", "food", "exhibition"],
+  "required_categories": ["coffee", "food", "library", "exhibition"],
   "preferences": ["couple", "photo", "local_feature"],
   "avoid": ["queue", "crowded"],
   "pace": "slow | normal | fast",

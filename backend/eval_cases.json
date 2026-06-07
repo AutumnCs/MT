@@ -258,5 +258,207 @@
       ],
       "min_poi_count": 1
     }
+  },
+  {
+    "id": "guangzhou_indoor_shopping_food",
+    "type": "intent",
+    "query": "广州今天下雨，想室内逛商场，顺便吃饭，预算200，不想太累。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "rainy_day",
+        "indoor",
+        "food"
+      ],
+      "required_categories": [
+        "shopping",
+        "food"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "guangzhou_old_citywalk_local",
+    "type": "intent",
+    "query": "广州想在老城区citywalk，喝咖啡，吃点本地特色小吃，不要太商业。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "citywalk",
+        "local_feature",
+        "food"
+      ],
+      "required_categories": [
+        "coffee",
+        "food",
+        "street"
+      ],
+      "min_poi_count": 3
+    }
+  },
+  {
+    "id": "guangzhou_family_museum_food",
+    "type": "intent",
+    "query": "周末广州带娃，想去博物馆，吃点粤式点心，别太累，预算250。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "family",
+        "food"
+      ],
+      "required_categories": [
+        "museum",
+        "food"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "guangzhou_night_photo_food",
+    "type": "intent",
+    "query": "广州晚上想拍照看夜景，再吃点东西，路线别太绕。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "photo",
+        "night_view",
+        "food"
+      ],
+      "required_categories": [
+        "night",
+        "food"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_rainy_museum_coffee",
+    "type": "intent",
+    "query": "上海下雨，想室内一点，去博物馆，再喝杯咖啡，不要太赶。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "rainy_day",
+        "indoor",
+        "culture"
+      ],
+      "required_categories": [
+        "museum",
+        "coffee"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_night_less_crowded",
+    "type": "intent",
+    "query": "上海晚上想看夜景喝咖啡，避开人多一点，最好别太远。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "night_view"
+      ],
+      "avoid": [
+        "crowded",
+        "far"
+      ],
+      "required_categories": [
+        "night",
+        "coffee"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_budget_local_snack",
+    "type": "intent",
+    "query": "上海预算80，想吃点本地小吃，再随便逛逛，性价比高一点。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "food",
+        "value",
+        "relaxed"
+      ],
+      "required_categories": [
+        "food",
+        "street"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_friends_citywalk_shopping",
+    "type": "intent",
+    "query": "上海和朋友下班后citywalk，想逛逛小店，也可以进商场，别太赶。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "friends",
+        "citywalk",
+        "shopping",
+        "relaxed"
+      ],
+      "required_categories": [
+        "street",
+        "shopping"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "vague_shanghai_quiet_view",
+    "type": "intent",
+    "query": "上海我也不知道去哪，就想找一个清闲一点、能欣赏景色的地方，别太吵。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "quiet"
+      ],
+      "required_categories": [
+        "scene"
+      ],
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "vague_guangzhou_relaxed_scenery_close",
+    "type": "intent",
+    "query": "广州今天有点累，想找个安静能看看风景的地方坐坐，最好别太远。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "quiet"
+      ],
+      "avoid": [
+        "far"
+      ],
+      "required_categories": [
+        "scene"
+      ],
+      "min_poi_count": 1
+    }
+  },
+  {
+    "id": "vague_shanghai_river_view_sit",
+    "type": "intent",
+    "query": "上海想找个江景好一点的地方坐坐发呆，不要太热门。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "quiet"
+      ],
+      "avoid": [
+        "crowded"
+      ],
+      "required_categories": [
+        "night"
+      ],
+      "min_poi_count": 1
+    }
   }
 ]

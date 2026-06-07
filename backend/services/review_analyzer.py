@@ -15,6 +15,23 @@
 from core.schemas import POI
 
 
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _explicit_signal(poi: POI, kind: str) -> float | None:
+    signals = getattr(poi, "review_signals", None) or {}
+    if not isinstance(signals, dict):
+        return None
+    value = signals.get(kind)
+    if value is None:
+        return None
+    try:
+        return _clamp(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def signal(poi: POI, kind: str, default: float = 0.5) -> float:
     """
     提取POI的某个特征信号值
@@ -38,6 +55,10 @@ def signal(poi: POI, kind: str, default: float = 0.5) -> float:
     返回：
         float: 信号值（0-1之间）
     """
+    explicit = _explicit_signal(poi, kind)
+    if explicit is not None:
+        return explicit
+
     text = " ".join([
         poi.name or "",
         poi.category or "",
@@ -46,6 +67,9 @@ def signal(poi: POI, kind: str, default: float = 0.5) -> float:
         " ".join(poi.tags),
         " ".join(poi.suitable_for),
         " ".join(poi.review_keywords),
+        " ".join(getattr(poi, "positive_reviews", []) or []),
+        " ".join(getattr(poi, "neutral_reviews", []) or []),
+        " ".join(getattr(poi, "negative_reviews", []) or []),
     ]).lower()
 
     score = default
@@ -123,7 +147,7 @@ def signal(poi: POI, kind: str, default: float = 0.5) -> float:
         kw = _count_keywords(text, pos, neg)
         score = (base + kw) / 2.0
 
-    return max(0.0, min(1.0, score))
+    return _clamp(score)
 
 
 def _count_keywords(text: str, pos: set[str], neg: set[str]) -> float:
@@ -147,4 +171,4 @@ def _count_keywords(text: str, pos: set[str], neg: set[str]) -> float:
     for w in neg:
         if w in text:
             score -= 0.15
-    return max(0.0, min(1.0, score))
+    return _clamp(score)

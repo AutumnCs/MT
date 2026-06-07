@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+os.environ.setdefault("LLM_INTENT_DISABLE_LLM", "1")
 
 from services import route_service
 
@@ -27,7 +34,15 @@ def _load_cases() -> list[dict[str, Any]]:
 
 
 def _subset_check(values: list[str], expected: list[str]) -> bool:
-    return set(expected).issubset(set(values))
+    def normalize(value: str) -> str:
+        return {
+            "spicy": "avoid_spicy",
+            "far": "avoid_far",
+            "queue": "avoid_queue",
+            "crowded": "avoid_crowded",
+        }.get(value, value)
+
+    return {normalize(item) for item in expected}.issubset({normalize(item) for item in values})
 
 
 def _has_any(values: list[str], expected: list[str]) -> bool:

@@ -39,6 +39,52 @@ def _contains_any(texts: list[str], terms: Iterable[str]) -> bool:
     return False
 
 
+def _current_route_poi_ids(intent: ParsedIntent) -> set[str]:
+    current_route = getattr(intent, "current_route", None)
+    if not isinstance(current_route, dict):
+        return set()
+    stops = current_route.get("stops") or current_route.get("main_stops") or []
+    if not isinstance(stops, list):
+        return set()
+
+    ids: set[str] = set()
+    for stop in stops:
+        if not isinstance(stop, dict):
+            continue
+        poi = stop.get("poi") if isinstance(stop.get("poi"), dict) else {}
+        poi_id = stop.get("poi_id") or poi.get("id")
+        if poi_id:
+            ids.add(str(poi_id))
+    return ids
+
+
+def _modification_penalty(poi: POI, intent: ParsedIntent) -> float:
+    if getattr(intent, "current_route", None) is None:
+        return 0.0
+
+    text = str(getattr(intent, "modification_query", "") or "")
+    current_ids = _current_route_poi_ids(intent)
+    penalty = 0.0
+
+    asks_replace = any(token in text for token in ("换", "替换", "不要这个", "去掉", "删掉", "重新", "不想去"))
+    if asks_replace and poi.id in current_ids:
+        penalty += 0.28
+
+    if getattr(intent, "avoid_queue", False) and (poi.queue_level or 0) >= 3:
+        penalty += 0.18
+    if getattr(intent, "avoid_crowded", False) and (poi.queue_level or 0) >= 3:
+        penalty += 0.14
+    if "avoid_far" in getattr(intent, "avoid", []):
+        if poi.id in current_ids and asks_replace:
+            penalty += 0.10
+    if getattr(intent, "budget", None):
+        expected = float(intent.budget) / max(len(intent.required_categories), 1)
+        if float(poi.price or 0.0) > expected:
+            penalty += 0.12
+
+    return _clip(penalty, 0.0, 0.55)
+
+
 def _text_blob(poi: POI) -> str:
     parts: list[str] = [
         poi.name or "",
@@ -94,25 +140,25 @@ def _preference_match_score(poi: POI, intent: ParsedIntent) -> float:
         if keyword and keyword in all_tags:
             score += float(PREFERENCE_POLICY["intent_tag_bonus"])
 
-    if intent.prefer_couple:
+    if _has_preference(intent, "couple", "prefer_couple"):
         score += review_analyzer.signal(poi, "date") * float(PREFERENCE_POLICY["date_signal_weight"])
-    if intent.prefer_photo:
+    if _has_preference(intent, "photo", "prefer_photo"):
         score += review_analyzer.signal(poi, "photo") * float(PREFERENCE_POLICY["photo_signal_weight"])
-    if intent.prefer_food:
+    if _has_preference(intent, "food", "prefer_food"):
         score += review_analyzer.signal(poi, "food") * float(PREFERENCE_POLICY["food_signal_weight"])
-    if intent.prefer_culture:
+    if _has_preference(intent, "culture", "prefer_culture"):
         score += review_analyzer.signal(poi, "culture") * float(PREFERENCE_POLICY["culture_signal_weight"])
-    if intent.prefer_local_feature:
+    if _has_preference(intent, "local_feature", "prefer_local_feature"):
         score += review_analyzer.signal(poi, "local_feature") * float(PREFERENCE_POLICY["local_feature_signal_weight"])
-    if intent.prefer_rainy_day:
+    if _has_preference(intent, "rainy_day", "prefer_rainy_day"):
         score += review_analyzer.signal(poi, "rainy_day") * float(PREFERENCE_POLICY["rainy_day_signal_weight"])
-    if intent.prefer_night_view:
+    if _has_preference(intent, "night_view", "prefer_night_view"):
         score += (
             float(SEMANTIC_POLICY["night_view_match"])
             if poi.category == TIME_POLICY["night_category"]
             else review_analyzer.signal(poi, "photo")
         ) * float(PREFERENCE_POLICY["night_view_weight"])
-    if intent.prefer_quiet:
+    if _has_preference(intent, "quiet", "prefer_quiet"):
         score += review_analyzer.signal(poi, "quiet") * float(PREFERENCE_POLICY["quiet_signal_weight"])
     if _has_preference(intent, "family", "prefer_family"):
         family_terms = tuple(PREFERENCE_POLICY["family_terms"])
@@ -164,25 +210,25 @@ def _preference_match_score(poi: POI, intent: ParsedIntent) -> float:
 
 def _semantic_score(poi: POI, intent: ParsedIntent) -> float:
     values: list[float] = []
-    if intent.prefer_photo:
+    if _has_preference(intent, "photo", "prefer_photo"):
         values.append(review_analyzer.signal(poi, "photo"))
-    if intent.prefer_couple:
+    if _has_preference(intent, "couple", "prefer_couple"):
         values.append(review_analyzer.signal(poi, "date"))
-    if intent.prefer_food:
+    if _has_preference(intent, "food", "prefer_food"):
         values.append(review_analyzer.signal(poi, "food"))
-    if intent.prefer_culture:
+    if _has_preference(intent, "culture", "prefer_culture"):
         values.append(review_analyzer.signal(poi, "culture"))
-    if intent.prefer_local_feature:
+    if _has_preference(intent, "local_feature", "prefer_local_feature"):
         values.append(review_analyzer.signal(poi, "local_feature"))
-    if intent.prefer_rainy_day:
+    if _has_preference(intent, "rainy_day", "prefer_rainy_day"):
         values.append(review_analyzer.signal(poi, "rainy_day"))
-    if intent.prefer_night_view:
+    if _has_preference(intent, "night_view", "prefer_night_view"):
         values.append(
             float(SEMANTIC_POLICY["night_view_match"])
             if poi.category == TIME_POLICY["night_category"]
             else review_analyzer.signal(poi, "photo")
         )
-    if intent.prefer_quiet:
+    if _has_preference(intent, "quiet", "prefer_quiet"):
         values.append(review_analyzer.signal(poi, "quiet"))
     if _has_preference(intent, "family", "prefer_family"):
         values.append(
@@ -334,8 +380,10 @@ def rank_pois(pois: list[POI], intent: ParsedIntent, top_k: int = 30) -> list[di
             "queue_penalty": _queue_penalty(poi, intent),
             "crowd_penalty": _crowd_penalty(poi, intent),
             "price_penalty": _price_penalty(poi, intent),
+            "modification_penalty": _modification_penalty(poi, intent),
         }
         final_score = _calculate_final_score(scores)
+        final_score = _clip(final_score - scores["modification_penalty"])
         scored.append(
             {
                 "poi": poi,

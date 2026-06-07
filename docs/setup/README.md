@@ -1,16 +1,17 @@
 # 启动与命令
 
-这部分只放最直接可执行的命令和环境说明。
+本目录只保留当前可执行命令和运行说明。
 
 ## 文档
 
-- [QUICKSTART.md](QUICKSTART.md)
-- [COMMANDS.md](COMMANDS.md)
+- [QUICKSTART.md](QUICKSTART.md)：最短启动路径。
+- [COMMANDS.md](COMMANDS.md)：常用命令集合。
 
-## 适合看什么
+## 当前运行口径
 
-- 第一次跑项目
-- 查具体命令
-- 查启动顺序
-- 查本地调试方式
+- 后端目录：`G:\MeituanAgent\backend`
+- 前端目录：`G:\MeituanAgent`
+- 后端入口：`backend/main.py`
+- 前端入口：`lib/main.dart`
+- 离线评测：`python -m eval.eval_runner`
 

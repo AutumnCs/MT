@@ -27,6 +27,57 @@ def _task_hint(current_route: Any = None) -> str:
     return RouteTaskHint.ROUTE_MODIFICATION.value if current_route is not None else RouteTaskHint.INTENT_EXTRACTION.value
 
 
+def _current_route_intent(current_route: Any = None) -> dict[str, Any]:
+    if current_route is None:
+        return {}
+    if isinstance(current_route, dict):
+        value = current_route.get("intent") or {}
+        if isinstance(value, dict) and value:
+            return value
+        stops = current_route.get("stops") or current_route.get("main_stops") or []
+        categories: list[str] = []
+        if isinstance(stops, list):
+            for stop in stops:
+                if not isinstance(stop, dict):
+                    continue
+                poi = stop.get("poi") if isinstance(stop.get("poi"), dict) else {}
+                category = poi.get("category")
+                if category:
+                    categories.append(str(category))
+        return {"required_categories": list(dict.fromkeys(categories))} if categories else {}
+    value = getattr(current_route, "intent", None)
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    return value if isinstance(value, dict) else {}
+
+
+def _inherit_current_route_intent(intent: ParsedIntent, current_route: Any = None) -> ParsedIntent:
+    base = _current_route_intent(current_route)
+    if not base:
+        return intent
+
+    modification_text = str(getattr(intent, "modification_query", "") or getattr(intent, "original_query", "") or "")
+    replaces_route_type = bool(
+        getattr(intent, "required_categories", [])
+        and any(token in modification_text for token in ("改成", "换成", "只要", "只想", "不要原来", "重新安排"))
+    )
+
+    for field_name in ("preferences", "required_categories", "avoid", "must_include"):
+        if field_name == "required_categories" and replaces_route_type:
+            continue
+        inherited = [str(item) for item in base.get(field_name, []) or [] if item]
+        current = [str(item) for item in getattr(intent, field_name, []) or [] if item]
+        setattr(intent, field_name, list(dict.fromkeys([*inherited, *current])))
+
+    if getattr(intent, "pace", "normal") == "normal" and base.get("pace") in {"fast", "slow"}:
+        intent.pace = str(base["pace"])
+    if not getattr(intent, "transport_mode", None) or intent.transport_mode == "mixed":
+        inherited_transport = base.get("transport_mode")
+        if inherited_transport in {"walking", "metro", "taxi", "mixed"}:
+            intent.transport_mode = inherited_transport
+    return intent_parser.refresh_intent_derived_fields(intent)
+
+
 def _need_clarification(intent: ParsedIntent, query: str, current_route: Any = None) -> ClarificationDecision | None:
     text = (query or "").strip()
     strong_signals = len(intent.preferences) + len(intent.required_categories) + len(intent.must_include)
@@ -70,6 +121,81 @@ def _need_clarification(intent: ParsedIntent, query: str, current_route: Any = N
     return None
 
 
+def _apply_ordered_query_hints(intent: ParsedIntent, query: str) -> ParsedIntent:
+    text = str(query or "")
+    stages: list[dict[str, str]] = []
+    has_sequence_signal = any(
+        token in text
+        for token in ("第一站", "先去", "首先", "然后", "接着", "晚饭", "晚餐", "吃完后", "饭后", "最后", "收尾")
+    )
+
+    def add_stage(kind: str, label: str) -> None:
+        if not any(stage.get("kind") == kind for stage in stages):
+            stages.append({"kind": kind, "label": label})
+
+    if "图书馆" in text or "看书" in text or "自习" in text:
+        if "library" not in intent.required_categories:
+            intent.required_categories.append("library")
+        add_stage("library", "图书馆")
+
+    if any(token in text for token in ("清闲", "清净", "安静", "休息", "坐坐", "放松")):
+        if "quiet" not in intent.preferences:
+            intent.preferences.append("quiet")
+        add_stage("quiet_rest", "清闲休息")
+
+    first_food = any(token in text for token in ("先去吃饭", "先吃饭", "第一站吃饭", "首先吃饭"))
+    final_food = "最后" in text and any(token in text for token in ("吃饭", "吃饭玩", "吃点"))
+    if first_food:
+        if "food" not in intent.required_categories:
+            intent.required_categories.append("food")
+        stages.append({"kind": "food", "label": "先吃饭", "position": "first"})
+
+    if "大学城" in text or "广州大学城" in text:
+        if "大学城" not in intent.must_include:
+            intent.must_include.append("大学城")
+        if "street" not in intent.required_categories:
+            intent.required_categories.append("street")
+        add_stage("university_area", "大学城")
+
+    if any(token in text for token in ("晚饭", "晚餐", "吃饭", "餐厅")) and not first_food:
+        if "food" not in intent.required_categories:
+            intent.required_categories.append("food")
+        add_stage("food", "晚饭")
+    elif final_food:
+        if "food" not in intent.required_categories:
+            intent.required_categories.append("food")
+        stages.append({"kind": "food", "label": "最后吃饭"})
+
+    if any(token in text for token in ("玩", "游玩", "逛玩")):
+        if "street" not in intent.required_categories:
+            intent.required_categories.append("street")
+        stages.append({"kind": "play", "label": "玩", "position": "last" if "最后" in text else ""})
+
+    if "广州塔" in text and "广州塔" not in intent.must_include:
+        intent.must_include.append("广州塔")
+
+    if "夜景" in text or "看夜景" in text or "欣赏夜景" in text:
+        if "night" not in intent.required_categories:
+            intent.required_categories.append("night")
+        if "night_view" not in intent.preferences:
+            intent.preferences.append("night_view")
+        add_stage("night", "夜景")
+
+    if any(token in text for token in ("第一站", "先去", "首先")) and stages:
+        stages[0]["position"] = "first"
+    if any(token in text for token in ("吃完后", "饭后", "最后", "收尾")) and any(stage["kind"] == "night" for stage in stages):
+        for stage in stages:
+            if stage["kind"] == "night":
+                stage["position"] = "last"
+
+    if has_sequence_signal and len(stages) >= 2:
+        intent.ordered_stages = stages
+        intent.hard_constraints = list(
+            dict.fromkeys([*(getattr(intent, "hard_constraints", []) or []), "ordered_stages"])
+        )
+    return intent_parser.refresh_intent_derived_fields(intent)
+
+
 def _parse_intent(
     query: str,
     *,
@@ -95,12 +221,21 @@ def _parse_intent(
         intent_parser.apply_ui_preferences(parsed_intent, preferences)
     if current_route is not None:
         parsed_intent.current_route = current_route
+        parsed_intent.modification_query = query
+        parsed_intent = _inherit_current_route_intent(parsed_intent, current_route)
     intent_parser.apply_modification_hints(parsed_intent, query, current_route=current_route)
+    parsed_intent = _apply_ordered_query_hints(parsed_intent, query)
     return parsed_intent
 
 
-def plan_route_from_intent(intent: ParsedIntent, use_amap: bool = False) -> RouteResponse:
+def plan_route_from_intent(
+    intent: ParsedIntent,
+    use_map_api: bool = False,
+    use_amap: bool | None = None,
+) -> RouteResponse:
     """Complete route planning from a parsed intent."""
+    if use_amap is not None:
+        use_map_api = use_amap
 
     clarification = _need_clarification(intent, getattr(intent, "original_query", "") or "", getattr(intent, "current_route", None))
     if clarification:
@@ -131,8 +266,8 @@ def plan_route_from_intent(intent: ParsedIntent, use_amap: bool = False) -> Rout
     if not pois:
         raise RoutePlanningError(404, "??????????????????????????????")
 
-    ranked = poi_ranker.rank_pois(pois, intent)
-    planned = route_planner.plan_route(ranked, intent, amap=use_amap)
+    ranked = poi_ranker.rank_pois(pois, intent, top_k=60)
+    planned = route_planner.plan_route(ranked, intent, amap=use_map_api)
     explanation = response_generator.generate_route_explanation(intent, planned.get("main", []))
     query_text = getattr(intent, "original_query", "") or ""
     capability_matches = capability_registry.match_capabilities(query_text, limit=3)
@@ -143,7 +278,7 @@ def plan_route_from_intent(intent: ParsedIntent, use_amap: bool = False) -> Rout
         route_capability=route_capability,
         capability_matches=capability_matches,
         clarification_needed=False,
-        used_amap=use_amap,
+        used_amap=use_map_api,
     )
     return response_generator.generate_response(
         intent=intent,
@@ -161,9 +296,13 @@ def plan_route(
     preferences: list[str] | None = None,
     current_route: Any = None,
     original_query: str | None = None,
-    use_amap: bool = False,
+    use_map_api: bool = False,
+    use_amap: bool | None = None,
     profile: Any = None,
+    context_snapshot: Any = None,
 ) -> tuple[ParsedIntent, RouteResponse]:
+    if use_amap is not None:
+        use_map_api = use_amap
     inferred_city = city or infer_city_from_route(current_route)
     intent = _parse_intent(
         query,
@@ -173,6 +312,14 @@ def plan_route(
         original_query=original_query,
     )
     intent.original_query = original_query or query
+    if context_snapshot is not None and current_route is None:
+        try:
+            from services import context_service
+
+            session = getattr(context_snapshot, "session", None)
+            intent = context_service.apply_session_context(intent, session)
+        except Exception:
+            pass
     if profile is not None:
         try:
             from services import context_service
@@ -180,5 +327,5 @@ def plan_route(
             intent = context_service.apply_profile_bias(intent, profile)
         except Exception:
             pass
-    response = plan_route_from_intent(intent, use_amap=use_amap)
+    response = plan_route_from_intent(intent, use_map_api=use_map_api)
     return intent, response

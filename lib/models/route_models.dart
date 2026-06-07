@@ -1,5 +1,19 @@
 import 'dart:math';
 
+int _jsonInt(dynamic value, [int fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return int.tryParse(value.toString()) ?? fallback;
+}
+
+int? _jsonNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return int.tryParse(value.toString());
+}
+
 class RouteSessionManager {
   static String? _sessionId;
 
@@ -68,7 +82,7 @@ class IntentDraft {
       startLocation: json['start_location'],
       startTime: json['start_time'],
       endTime: json['end_time'],
-      budget: json['budget'],
+      budget: _jsonNullableInt(json['budget']),
       requiredCategories: List<String>.from(json['required_categories'] ?? const []),
       preferences: List<String>.from(json['preferences'] ?? const []),
       avoid: List<String>.from(json['avoid'] ?? const []),
@@ -144,7 +158,7 @@ class ParsedIntent {
       startLocation: json['start_location'],
       startTime: json['start_time'],
       endTime: json['end_time'],
-      budget: json['budget'],
+      budget: _jsonNullableInt(json['budget']),
       preferences: List<String>.from(json['preferences'] ?? const []),
       softPreferences: List<String>.from(json['soft_preferences'] ?? const []),
       hardConstraints: List<String>.from(json['hard_constraints'] ?? const []),
@@ -249,19 +263,19 @@ class Poi {
       address: json['address'] ?? '',
       latitude: (json['latitude'] ?? 0).toDouble(),
       longitude: (json['longitude'] ?? 0).toDouble(),
-      price: json['price'] ?? 0,
-      visitDuration: json['visit_duration'] ?? 90,
+      price: _jsonInt(json['price']),
+      visitDuration: _jsonInt(json['visit_duration'], 90),
       rating: (json['rating'] ?? 0).toDouble(),
       businessHours: json['business_hours'],
       tags: List<String>.from(json['tags'] ?? const []),
       suitableFor: List<String>.from(json['suitable_for'] ?? const []),
-      queueLevel: json['queue_level'] ?? 2,
-      photoScore: json['photo_score'] ?? 3,
-      dateScore: json['date_score'] ?? 3,
-      foodScore: json['food_score'] ?? 3,
-      cultureScore: json['culture_score'] ?? 3,
-      localFeatureScore: json['local_feature_score'] ?? 3,
-      rainyDayScore: json['rainy_day_score'] ?? 3,
+      queueLevel: _jsonInt(json['queue_level'], 2),
+      photoScore: _jsonInt(json['photo_score'], 3),
+      dateScore: _jsonInt(json['date_score'], 3),
+      foodScore: _jsonInt(json['food_score'], 3),
+      cultureScore: _jsonInt(json['culture_score'], 3),
+      localFeatureScore: _jsonInt(json['local_feature_score'], 3),
+      rainyDayScore: _jsonInt(json['rainy_day_score'], 3),
       indoorOutdoor: json['indoor_outdoor'] ?? 'indoor',
       description: json['description'] ?? '',
     );
@@ -300,6 +314,7 @@ class Poi {
     const labels = {
       'coffee': '咖啡',
       'food': '餐饮',
+      'library': '图书馆',
       'museum': '博物馆',
       'exhibition': '展览',
       'scene': '景点',
@@ -336,7 +351,7 @@ class RouteStop {
       poi: Poi.fromJson(json['poi'] ?? {}),
       arrivalTime: json['arrival_time'] ?? '',
       departureTime: json['departure_time'] ?? '',
-      stayMinutes: json['stay_minutes'] ?? 0,
+      stayMinutes: _jsonInt(json['stay_minutes']),
       reason: json['reason'] ?? '',
       riskAlert: json['risk_alert'],
       travelFromPrevious: json['travel_from_previous'] == null
@@ -423,10 +438,10 @@ class RouteResponse {
     return RouteResponse(
       title: json['title'] ?? '',
       summary: json['summary'] ?? '',
-      totalCost: json['total_cost'] ?? json['total_budget'] ?? 0,
-      totalDuration: json['total_duration'] ?? 0,
+      totalCost: _jsonInt(json['total_cost'] ?? json['total_budget']),
+      totalDuration: _jsonInt(json['total_duration']),
       totalDistance: (json['total_distance'] ?? 0).toDouble(),
-      poiCount: json['poi_count'] ?? stops.length,
+      poiCount: _jsonInt(json['poi_count'], stops.length),
       coveredTypes: coveredTypes.isNotEmpty
           ? coveredTypes
           : stops.map((stop) => stop.poi.categoryLabel).toSet().toList(),
@@ -492,6 +507,9 @@ class RouteOption {
   final double totalDistance;
   final int poiCount;
   final List<String> stops;
+  final List<RouteStop> routeStops;
+  final List<String> coveredTypes;
+  final Map<String, dynamic>? mapPreview;
 
   RouteOption({
     required this.strategyType,
@@ -501,17 +519,25 @@ class RouteOption {
     required this.totalDistance,
     required this.poiCount,
     required this.stops,
+    this.routeStops = const [],
+    this.coveredTypes = const [],
+    this.mapPreview,
   });
 
   factory RouteOption.fromJson(Map<String, dynamic> json) {
     return RouteOption(
       strategyType: json['strategy_type'] ?? '',
       routeScore: (json['route_score'] ?? 0).toDouble(),
-      totalCost: json['total_cost'] ?? 0,
-      totalDuration: json['total_duration'] ?? 0,
+      totalCost: _jsonInt(json['total_cost']),
+      totalDuration: _jsonInt(json['total_duration']),
       totalDistance: (json['total_distance'] ?? 0).toDouble(),
-      poiCount: json['poi_count'] ?? 0,
+      poiCount: _jsonInt(json['poi_count']),
       stops: List<String>.from(json['stops'] ?? const []),
+      routeStops: (json['route_stops'] as List<dynamic>? ?? const [])
+          .map((item) => RouteStop.fromJson(Map<String, dynamic>.from(item)))
+          .toList(),
+      coveredTypes: List<String>.from(json['covered_types'] ?? const []),
+      mapPreview: json['map_preview'] == null ? null : Map<String, dynamic>.from(json['map_preview']),
     );
   }
 
@@ -524,6 +550,9 @@ class RouteOption {
       'total_distance': totalDistance,
       'poi_count': poiCount,
       'stops': stops,
+      'route_stops': routeStops.map((item) => item.toJson()).toList(),
+      'covered_types': coveredTypes,
+      'map_preview': mapPreview,
     };
   }
 }

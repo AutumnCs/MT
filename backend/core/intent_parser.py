@@ -50,32 +50,35 @@ MAX_BUDGET = 5000
 
 _CATEGORY_FALLBACK_KEYWORDS = {
     "category_coffee": ["咖啡", "咖啡店", "下午茶", "茶饮", "甜品", "蛋糕", "瑞幸", "喜茶"],
-    "category_food": ["吃饭", "美食", "餐厅", "饭店", "午餐", "晚餐", "早餐", "小吃", "本帮菜", "粤菜", "川菜", "湘菜", "火锅", "烧烤", "素食"],
+    "category_food": ["吃饭", "美食", "餐厅", "饭店", "午餐", "晚餐", "早餐", "小吃", "本地小吃", "吃点东西", "吃点", "本帮菜", "粤菜", "川菜", "湘菜", "火锅", "烧烤", "素食"],
+    "category_library": ["图书馆", "图书", "书馆", "阅读", "自习", "看书"],
     "category_exhibition": ["展览", "博物馆", "美术馆", "画廊", "看展", "艺术展", "书店"],
-    "category_night": ["夜景", "夜生活", "看夜景", "夜游", "酒吧", "清吧", "夜场"],
-    "category_street": ["逛街", "购物", "商业街", "步行街", "老街", "弄堂", "小巷", "散步", "citywalk"],
-    "category_park": ["公园", "户外", "绿地", "江边", "河边", "湖边", "爬山", "徒步"],
+    "category_night": ["夜景", "夜生活", "看夜景", "夜游", "江景", "灯光", "酒吧", "清吧", "夜场"],
+    "category_street": ["逛街", "购物", "商业街", "步行街", "老街", "弄堂", "小巷", "散步", "citywalk", "逛逛", "随便逛逛", "小店", "玩", "游玩", "逛玩"],
+    "category_park": ["公园", "户外", "绿地", "江边", "河边", "湖边", "滨江", "爬山", "徒步"],
     "category_shopping": ["商场", "购物", "逛商场", "商圈", "mall"],
     "category_museum": ["博物馆", "展馆", "纪念馆", "陈列馆"],
-    "category_scene": ["景点", "风景", "打卡点", "观景", "景区"],
+    "category_scene": ["景点", "风景", "景色", "看风景", "欣赏景色", "江景", "观景", "打卡点", "景区", "玩", "游玩"],
 }
 
 _PREFERENCE_FALLBACK_KEYWORDS = {
     "prefer_couple": ["约会", "情侣", "浪漫", "二人世界", "烛光晚餐", "甜蜜"],
     "prefer_photo": ["拍照", "打卡", "出片", "好看", "上镜", "氛围感", "网红"],
-    "prefer_food": ["美食", "吃饭", "吃点好的", "好吃", "探店", "简餐", "咖啡", "下午茶"],
+    "prefer_food": ["美食", "吃饭", "吃点好的", "吃点东西", "吃点", "好吃", "小吃", "本地小吃", "本帮菜", "粤式点心", "正餐", "探店", "简餐", "咖啡", "下午茶"],
     "prefer_culture": ["文化", "历史", "古迹", "博物馆", "人文", "艺术", "看展"],
-    "prefer_local_feature": ["本地特色", "接地气", "本地味", "烟火气", "老字号", "地道", "不太商业"],
+    "prefer_local_feature": ["本地特色", "接地气", "本地味", "烟火气", "老字号", "地道", "本帮菜", "粤式点心", "不太商业", "不要太商业", "别太商业"],
     "prefer_night_view": ["夜景", "夜游", "看夜景", "灯光秀", "夜生活"],
-    "prefer_quiet": ["安静", "清净", "轻松", "松弛", "不吵", "人少", "慢慢逛"],
+    "prefer_quiet": ["安静", "清净", "清闲", "轻松", "松弛", "不吵", "人少", "慢慢逛", "坐坐", "发呆"],
     "prefer_rainy_day": ["雨天", "下雨", "避雨", "室内优先", "室内", "躲雨"],
     "prefer_walking": ["步行", "散步", "citywalk", "逛逛", "溜达", "走路"],
     "prefer_family": ["亲子", "带娃", "小朋友", "孩子", "家庭", "一家人"],
+    "prefer_coffee": ["咖啡", "咖啡店", "喝杯咖啡", "下午茶"],
     "prefer_friends": ["朋友", "闺蜜", "同学", "聚会", "朋友局"],
     "prefer_solo": ["一个人", "独自", "solo", "独行"],
     "prefer_value": ["性价比", "划算", "实惠", "便宜", "预算友好", "省钱"],
     "prefer_indoor": ["室内", "室内优先", "避雨", "不淋雨", "馆内", "店内"],
     "prefer_outdoor": ["室外", "户外", "露天", "外面", "室外优先"],
+    "prefer_shopping": ["购物", "商场", "逛商场", "商圈", "逛小店", "小店"],
     "prefer_citywalk": ["citywalk", "city walk", "城市漫步", "慢逛", "闲逛", "逛逛"],
     "prefer_efficient": ["高效", "尽快", "快一点", "省时间", "效率", "不折腾"],
     "prefer_compact": ["紧凑", "少绕路", "少转场", "不绕", "顺路", "串起来"],
@@ -84,9 +87,40 @@ _PREFERENCE_FALLBACK_KEYWORDS = {
 _AVOID_FALLBACK_KEYWORDS = {
     "avoid_spicy": ["不要辣", "不吃辣", "少辣", "清淡"],
     "avoid_far": ["别太远", "不要太远", "近一点", "更近", "不要跑太远"],
-    "avoid_queue": ["不想排队", "不要排队", "少排队", "排队太久"],
+    "avoid_queue": ["不想排队", "不要排队", "少排队", "排队太久", "不想排太久队", "不想排太久"],
     "avoid_crowded": ["人多", "拥挤", "别太挤", "避开人多", "别太拥挤"],
 }
+
+
+def _normalize_avoid_key(value: str) -> str:
+    mapping = {
+        "spicy": "avoid_spicy",
+        "far": "avoid_far",
+        "queue": "avoid_queue",
+        "crowded": "avoid_crowded",
+    }
+    return mapping.get(value, value)
+
+
+def _parse_chinese_number(num_text: str) -> Optional[int]:
+    if not num_text:
+        return None
+    digits = {"零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+    units = {"十": 10, "百": 100, "千": 1000}
+    total = 0
+    number = 0
+    has_value = False
+    for char in num_text:
+        if char in digits:
+            number = digits[char]
+            has_value = True
+        elif char in units:
+            total += (number or 1) * units[char]
+            number = 0
+            has_value = True
+        else:
+            return None
+    return total + number if has_value else None
 
 
 def _keywords_with_fallback(lexicon_key: str, fallback_map: dict[str, list[str]]) -> list[str]:
@@ -188,6 +222,8 @@ class IntentParser:
 
         # 10. 提取必须包含的项目
         must_include = self._extract_must_include(query)
+        if start_location:
+            must_include = [item for item in must_include if item not in start_location and start_location not in item]
 
         # 11. 保留未能稳定归类的线索，方便后续扩词典与回归
         unclassified_clues = _extract_unclassified_clues(
@@ -277,20 +313,28 @@ class IntentParser:
         start_time = None
         end_time = None
 
+        def _hour(match: re.Match, group: int = 1) -> int:
+            raw = match.group(group)
+            if raw.isdigit():
+                return int(raw)
+            parsed = _parse_chinese_number(raw)
+            return int(parsed or 0)
+
+        def _format_hour(hour: int, period: str | None = None) -> str:
+            if period in {"下午", "晚上"} and hour < 12:
+                hour += 12
+            return f"{hour:02d}:00"
+
         # 解析开始时间
         time_patterns = [
+            # X点Y分
+            (r"(\d{1,2}|[零〇一二两三四五六七八九十]{1,3})点(\d{1,2}|[零〇一二两三四五六七八九十]{1,3})分", lambda m: f"{_hour(m, 1):02d}:{_hour(m, 2):02d}"),
             # 下午2点 -> 14:00
-            (r"下午(\d{1,2})[点时]", lambda m: f"{int(m.group(1)) + 12:02d}:00"),
-            # 晚上7点 -> 19:00
-            (r"晚上(\d{1,2})[点时]", lambda m: f"{int(m.group(1)) + 12:02d}:00"),
-            # 早上9点 -> 09:00
-            (r"早上(\d{1,2})[点时]", lambda m: f"{int(m.group(1)):02d}:00"),
-            # 中午12点 -> 12:00
-            (r"中午(\d{1,2})[点时]", lambda m: f"{int(m.group(1)):02d}:00"),
+            (r"(下午|晚上|早上|中午)(\d{1,2}|[零〇一二两三四五六七八九十]{1,3})[点时]", lambda m: _format_hour(_hour(m, 2), m.group(1))),
+            # 2点 -> 02:00；中文数字需要有“下午/晚上”等时段词，避免“人多一点”误识别。
+            (r"(\d{1,2})[点时]", lambda m: _format_hour(_hour(m))),
             # HH:MM 格式
             (r"(\d{1,2}):(\d{2})", lambda m: f"{int(m.group(1)):02d}:{m.group(2)}"),
-            # X点Y分
-            (r"(\d{1,2})点(\d{1,2})分", lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)):02d}"),
         ]
 
         for pattern, extractor in time_patterns:
@@ -301,13 +345,11 @@ class IntentParser:
 
         # 解析结束时间（如果有明确说明）
         # 例如："晚上9点前结束"
-        end_pattern = r"(晚上|下午|早上|中午)?(\d{1,2})[点时](?:前|以前|内|结束)?"
+        end_pattern = r"(晚上|下午|早上|中午)?(\d{1,2}|[零〇一二两三四五六七八九十]{1,3})[点时](?:前|以前|之前|结束)"
         end_match = re.search(end_pattern, query)
         if end_match:
-            hour = int(end_match.group(2))
-            if end_match.group(1) in ["晚上", "下午"] and hour < 12:
-                hour += 12
-            end_time = f"{hour:02d}:00"
+            hour = _hour(end_match, 2)
+            end_time = _format_hour(hour, end_match.group(1))
 
         return start_time, end_time
 
@@ -373,7 +415,7 @@ class IntentParser:
             return float(total + section + number) if has_value else None
 
         digit_patterns = [
-            r"(?:预算|花费|花销|消费|预算为|预算是)?\s*(\d+(?:\.\d+)?)\s*(?:元|块钱|块|人民币)?",
+            r"(?:预算|花费|花销|消费|预算为|预算是)\s*(\d+(?:\.\d+)?)\s*(?:元|块钱|块|人民币)?",
             r"(\d+(?:\.\d+)?)\s*(?:元|块钱|块|人民币)",
         ]
         for pattern in digit_patterns:
@@ -425,6 +467,7 @@ class IntentParser:
         category_map = {
             "category_coffee": "coffee",
             "category_food": "food",
+            "category_library": "library",
             "category_exhibition": "exhibition",
             "category_night": "night",
             "category_street": "street",
@@ -466,11 +509,13 @@ class IntentParser:
             "prefer_rainy_day": "rainy_day",
             "prefer_walking": "walking",
             "prefer_family": "family",
+            "prefer_coffee": "coffee",
             "prefer_friends": "friends",
             "prefer_solo": "solo",
             "prefer_value": "value",
             "prefer_indoor": "indoor",
             "prefer_outdoor": "outdoor",
+            "prefer_shopping": "shopping",
             "prefer_citywalk": "citywalk",
             "prefer_efficient": "efficient",
             "prefer_compact": "compact",
@@ -498,18 +543,19 @@ class IntentParser:
         """
         avoid_list = []
         avoid_map = {
-            "avoid_spicy": "spicy",
-            "avoid_far": "far",
-            "avoid_queue": "queue",
-            "avoid_crowded": "crowded",
+            "avoid_spicy": "avoid_spicy",
+            "avoid_far": "avoid_far",
+            "avoid_queue": "avoid_queue",
+            "avoid_crowded": "avoid_crowded",
         }
 
         for lexicon_key, avoid_item in avoid_map.items():
             keywords = _keywords_with_fallback(lexicon_key, _AVOID_FALLBACK_KEYWORDS)
             for keyword in keywords:
                 if keyword in query:
-                    if avoid_item not in avoid_list:
-                        avoid_list.append(avoid_item)
+                    normalized = _normalize_avoid_key(avoid_item)
+                    if normalized not in avoid_list:
+                        avoid_list.append(normalized)
                     break
 
         return avoid_list
@@ -669,8 +715,30 @@ def refresh_intent_derived_fields(intent: ParsedIntent) -> ParsedIntent:
             setattr(intent, field_name, True)
 
     for key, field_name in avoid_flags.items():
-        if key in getattr(intent, "avoid", []):
-            setattr(intent, field_name, True)
+            if key in [_normalize_avoid_key(item) for item in getattr(intent, "avoid", [])]:
+                setattr(intent, field_name, True)
+
+    category_from_preferences = {
+        "food": "food",
+        "coffee": "coffee",
+        "culture": "exhibition",
+        "rainy_day": "exhibition",
+        "indoor": "exhibition",
+        "night_view": "night",
+        "citywalk": "street",
+        "walking": "street",
+        "shopping": "shopping",
+        "family": "museum",
+        "coffee": "coffee",
+    }
+    required_categories = list(getattr(intent, "required_categories", []) or [])
+    for preference in getattr(intent, "preferences", []) or []:
+        category = category_from_preferences.get(preference)
+        if category and category not in required_categories:
+            required_categories.append(category)
+    intent.required_categories = required_categories
+
+    intent.avoid = list(dict.fromkeys(_normalize_avoid_key(item) for item in getattr(intent, "avoid", []) or []))
 
     intent.soft_preferences = list(
         dict.fromkeys([*(getattr(intent, "soft_preferences", []) or []), *(getattr(intent, "preferences", []) or [])])
@@ -748,16 +816,24 @@ def apply_modification_hints(
         return intent
 
     lowered = text.lower()
+    if current_route is not None:
+        intent.modification_query = text
     pref_keys = list(intent.preferences)
     avoid_keys = list(intent.avoid)
+    category_keys = list(intent.required_categories)
 
     def add_pref(key: str) -> None:
         if key not in pref_keys:
             pref_keys.append(key)
 
     def add_avoid(key: str) -> None:
-        if key not in avoid_keys:
-            avoid_keys.append(key)
+        normalized = _normalize_avoid_key(key)
+        if normalized not in avoid_keys:
+            avoid_keys.append(normalized)
+
+    def add_category(key: str) -> None:
+        if key not in category_keys:
+            category_keys.append(key)
 
     if any(token in text for token in ("太远", "别太远", "近一点", "更近")):
         add_avoid("avoid_far")
@@ -768,23 +844,40 @@ def apply_modification_hints(
     if any(token in text for token in ("不吃辣", "不要辣", "清淡", "少辣")):
         add_avoid("avoid_spicy")
 
-    if any(token in text for token in ("轻松", "别太赶", "慢一点", "慢慢", "松弛")):
+    if any(token in text for token in ("轻松", "别太赶", "不要太赶", "不太赶", "慢一点", "慢慢", "松弛", "性价比", "预算友好", "不要太绕", "别太绕", "随便逛逛", "别太累", "不想太累")):
         add_pref("relaxed")
     if any(token in text for token in ("高效", "快一点", "尽快", "紧凑")):
         add_pref("efficient")
     if any(token in text for token in ("拍照", "出片", "打卡", "好看")):
         add_pref("photo")
-    if any(token in text for token in ("美食", "吃饭", "吃点好的", "好吃")):
+    if any(token in text for token in ("美食", "吃饭", "吃点好的", "吃点东西", "吃点", "好吃", "小吃", "本地小吃", "本帮菜", "粤式点心", "正餐", "简餐")):
         add_pref("food")
     if any(token in text for token in ("文艺", "展览", "看展", "博物馆")):
         add_pref("culture")
+    if any(token in text for token in ("咖啡", "咖啡店", "喝杯咖啡", "下午茶")):
+        add_pref("coffee")
     if any(token in text for token in ("夜景", "夜游", "晚上逛")):
         add_pref("night_view")
     if any(token in text for token in ("本地特色", "小众", "地道", "接地气")):
         add_pref("local_feature")
+    if any(token in text for token in ("购物", "商场", "逛商场", "商圈", "逛小店", "小店")):
+        add_pref("shopping")
+        add_category("shopping")
+    if any(token in text for token in ("博物馆", "展馆", "纪念馆", "陈列馆")):
+        add_category("museum")
+    if any(token in text for token in ("咖啡", "咖啡店", "喝杯咖啡", "下午茶")):
+        add_category("coffee")
+    if any(token in text for token in ("逛逛", "随便逛逛", "citywalk", "城市漫步", "老街", "小店", "玩", "游玩", "逛玩")):
+        add_category("street")
+    if any(token in text for token in ("大学城", "广州大学城", "小洲村", "岭南印象园", "广东科学中心")):
+        if "大学城" not in intent.must_include:
+            intent.must_include.append("大学城")
+        add_category("street")
     if any(token in text for token in ("雨天", "下雨", "室内", "避雨")):
         add_pref("rainy_day")
         add_pref("indoor")
+        if any(token in text for token in ("别太赶", "不要太赶", "不太赶", "安静", "清净", "轻松")):
+            add_pref("quiet")
     if any(token in text for token in ("亲子", "带娃", "小朋友")):
         add_pref("family")
     if any(token in text for token in ("约会", "情侣")):
@@ -798,9 +891,14 @@ def apply_modification_hints(
         add_pref("walking")
 
     intent.preferences = list(dict.fromkeys(pref_keys))
-    intent.avoid = list(dict.fromkeys(avoid_keys))
+    intent.avoid = list(dict.fromkeys(_normalize_avoid_key(item) for item in avoid_keys))
+    intent.required_categories = list(dict.fromkeys(category_keys))
 
-    if "室内" in text or "下雨" in text or "雨天" in text:
+    if any(token in text for token in ("尽快", "快一点", "高效", "速战速决", "半天内搞定")):
+        intent.pace = "fast"
+    elif any(token in text for token in ("别太赶", "不要太赶", "不太赶", "别太累", "不想太累", "慢一点", "慢慢", "随便逛逛", "不要太绕", "别太绕")):
+        intent.pace = "slow"
+    elif "室内" in text or "下雨" in text or "雨天" in text:
         intent.pace = intent.pace if intent.pace in {"fast", "normal", "slow"} else "normal"
     if any(token in text for token in ("打车", "出租", "车", "开车")):
         intent.transport_mode = "taxi"
@@ -840,20 +938,21 @@ def normalize_llm_intent(
     """
     # 创建解析器
     parser = IntentParser()
+    local_intent = parser.parse_intent(query or "", explicit_city)
 
     # 如果 LLM 返回为空，使用本地解析
     if not draft or not isinstance(draft, dict):
         return parser.parse_intent(query or "", explicit_city)
 
     # 归一化城市
-    city = draft.get("city") or explicit_city
+    city = draft.get("city") or local_intent.city or explicit_city
     if city:
         for supported in SUPPORTED_CITIES:
             if supported in str(city):
                 city = supported
                 break
     else:
-        city = None
+        city = local_intent.city or None
 
     # 归一化预算
     budget = draft.get("budget")
@@ -871,13 +970,15 @@ def normalize_llm_intent(
         preferences = [str(p).strip() for p in preferences if p]
     else:
         preferences = []
+    preferences = list(dict.fromkeys([*preferences, *local_intent.preferences]))
 
     # 归一化避雷
     avoid = draft.get("avoid") or []
     if isinstance(avoid, list):
-        avoid = [str(a).strip() for a in avoid if a]
+        avoid = [_normalize_avoid_key(str(a).strip()) for a in avoid if a]
     else:
         avoid = []
+    avoid = list(dict.fromkeys([*avoid, *local_intent.avoid]))
 
     # 归一化类别
     categories = draft.get("required_categories") or []
@@ -885,22 +986,24 @@ def normalize_llm_intent(
         categories = [str(c).strip() for c in categories if c]
     else:
         categories = []
+    categories = list(dict.fromkeys([*categories, *local_intent.required_categories]))
 
     # 归一化节奏
-    pace = draft.get("pace") or "normal"
+    pace = draft.get("pace") or local_intent.pace or "normal"
     if pace not in ["fast", "normal", "slow"]:
-        pace = "normal"
+        pace = local_intent.pace if local_intent.pace in ["fast", "normal", "slow"] else "normal"
 
     # 归一化交通方式
-    transport = draft.get("transport_mode") or "mixed"
+    transport = draft.get("transport_mode") or local_intent.transport_mode or "mixed"
     if transport not in ["walking", "metro", "taxi", "mixed"]:
-        transport = "mixed"
+        transport = local_intent.transport_mode if local_intent.transport_mode in ["walking", "metro", "taxi", "mixed"] else "mixed"
 
     must_include = draft.get("must_include") or []
     if not isinstance(must_include, list):
         must_include = []
     else:
         must_include = [str(item).strip() for item in must_include if item]
+    must_include = list(dict.fromkeys([*must_include, *local_intent.must_include]))
 
     draft_unclassified = draft.get("unclassified_clues") or []
     if isinstance(draft_unclassified, list):
@@ -916,10 +1019,10 @@ def normalize_llm_intent(
 
     return ParsedIntent(
         city=city,
-        start_location=draft.get("start_location") or parser._extract_start_location(query or ""),
-        start_time=draft.get("start_time"),
-        end_time=draft.get("end_time"),
-        budget=budget,
+        start_location=draft.get("start_location") or local_intent.start_location,
+        start_time=draft.get("start_time") or local_intent.start_time,
+        end_time=draft.get("end_time") or local_intent.end_time,
+        budget=budget if budget is not None else local_intent.budget,
         required_categories=categories,
         preferences=preferences,
         avoid=avoid,
@@ -927,5 +1030,7 @@ def normalize_llm_intent(
         transport_mode=transport,
         must_include=must_include,
         unclassified_clues=unclassified_clues,
-        notes=draft.get("notes"),
+        notes=draft.get("notes") or local_intent.notes,
+        parse_source="llm+local",
+        llm_payload=draft,
     )

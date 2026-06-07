@@ -134,7 +134,7 @@
 ### 3.3 地图能力
 
 1. 先查 `map.status`
-2. 有 key 就走高德 Web 服务
+2. 有天地图 key 就走天地图 Web 服务
 3. 没 key 就走 local fallback
 4. 前端只消费统一的预览结构
 

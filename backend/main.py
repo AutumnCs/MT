@@ -97,12 +97,14 @@ def _record_context_turn(
 @app.post("/api/route/generate", response_model=schemas.RouteResponse)
 async def generate_route(request: RouteRequest):
     try:
-        profile = context_service.get_profile(request.session_id) if request.session_id else None
+        context_snapshot = context_service.get_context_snapshot(request.session_id) if request.session_id else None
+        profile = context_snapshot.profile if context_snapshot is not None else None
         intent, response = route_service.plan_route(
             request.query,
             preferences=request.preferences,
             city=request.city,
             profile=profile,
+            context_snapshot=context_snapshot,
         )
         _record_context_turn(
             request.session_id,
@@ -124,13 +126,15 @@ async def generate_route(request: RouteRequest):
 async def modify_route(request: ModifyRequest):
     try:
         inferred_city = infer_city_from_route(request.current_route)
-        profile = context_service.get_profile(request.session_id) if request.session_id else None
+        context_snapshot = context_service.get_context_snapshot(request.session_id) if request.session_id else None
+        profile = context_snapshot.profile if context_snapshot is not None else None
         intent, response = route_service.plan_route(
             request.query,
             city=inferred_city,
             current_route=request.current_route,
             original_query=request.original_query or request.query,
             profile=profile,
+            context_snapshot=context_snapshot,
         )
         _record_context_turn(
             request.session_id,
@@ -281,7 +285,7 @@ async def map_route(request: map_schemas.MapRouteRequest):
     )
     result = map_service.estimate_travel_between_pois(origin, destination, request.mode)
     return {
-        "provider": result.get("provider", "amap"),
+        "provider": result.get("provider", "local"),
         "enabled": result.get("enabled", False),
         "success": result.get("success", False),
         "message": result.get("message"),
@@ -326,7 +330,7 @@ async def map_preview(request: map_schemas.MapPreviewRequest):
         route_explanation="",
     )
     return {
-        "provider": "amap" if map_service.is_enabled() else "local",
+        "provider": "tdt" if map_service.is_enabled() else "local",
         "enabled": map_service.is_enabled(),
         "success": True,
         "message": None,
@@ -335,6 +339,9 @@ async def map_preview(request: map_schemas.MapPreviewRequest):
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

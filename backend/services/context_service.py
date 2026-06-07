@@ -76,6 +76,10 @@ def _top_items(counter: dict[str, int], limit: int = 5) -> list[str]:
     return [key for key, _ in Counter(counter).most_common(limit) if key]
 
 
+def _stable_top_items(counter: dict[str, int], limit: int = 5, min_count: int = 2) -> list[str]:
+    return [key for key, value in Counter(counter).most_common() if key and int(value) >= min_count][:limit]
+
+
 def _budget_band(budget: Any) -> Optional[str]:
     try:
         value = float(budget)
@@ -154,12 +158,12 @@ def _update_profile_from_intent(profile: dict[str, Any], intent_data: dict[str, 
             counts[token] = int(counts.get(token, 0)) + 1
 
     pace = intent_data.get("pace")
-    if isinstance(pace, str) and pace in _VALID_PACE:
+    if isinstance(pace, str) and pace in {"fast", "slow"}:
         behavior_counts = profile.setdefault("behavior_counts", {})
         behavior_counts[f"pace:{pace}"] = int(behavior_counts.get(f"pace:{pace}", 0)) + 1
 
     transport = intent_data.get("transport_mode")
-    if isinstance(transport, str) and transport in _VALID_TRANSPORT:
+    if isinstance(transport, str) and transport in {"walking", "metro", "taxi"}:
         behavior_counts = profile.setdefault("behavior_counts", {})
         behavior_counts[f"transport:{transport}"] = int(behavior_counts.get(f"transport:{transport}", 0)) + 1
 
@@ -199,18 +203,18 @@ def _update_profile_from_intent(profile: dict[str, Any], intent_data: dict[str, 
 
     behavior_counts = profile.get("behavior_counts", {})
     profile["preferred_pace"] = None
-    for pace_key in ("pace:slow", "pace:normal", "pace:fast"):
-        if pace_key in behavior_counts:
+    for pace_key in ("pace:slow", "pace:fast"):
+        if int(behavior_counts.get(pace_key, 0)) >= 2:
             profile["preferred_pace"] = pace_key.split(":", 1)[1]
             break
     profile["preferred_transport_mode"] = None
-    for transport_key in ("transport:walking", "transport:metro", "transport:taxi", "transport:mixed"):
-        if transport_key in behavior_counts:
+    for transport_key in ("transport:walking", "transport:metro", "transport:taxi"):
+        if int(behavior_counts.get(transport_key, 0)) >= 2:
             profile["preferred_transport_mode"] = transport_key.split(":", 1)[1]
             break
     profile["budget_band"] = None
     for budget_key in ("budget:low", "budget:mid", "budget:high"):
-        if budget_key in behavior_counts:
+        if int(behavior_counts.get(budget_key, 0)) >= 2:
             profile["budget_band"] = budget_key.split(":", 1)[1]
             break
 
@@ -362,25 +366,57 @@ def apply_profile_bias(intent: Any, profile: Any) -> Any:
 
     profile_data = profile.model_dump(mode="json") if hasattr(profile, "model_dump") else dict(profile)
 
+    applied: list[str] = []
+
     if not getattr(intent, "city", None) and profile_data.get("home_city"):
         intent.city = profile_data.get("home_city")
+        applied.append(f"city:{intent.city}")
 
-    if not getattr(intent, "required_categories", None) and profile_data.get("preferred_categories"):
-        intent.required_categories = list(profile_data.get("preferred_categories", [])[:2])
+    category_counts = profile_data.get("category_counts") or {}
+    stable_categories = _stable_top_items(category_counts, limit=2)
+    current_categories = list(getattr(intent, "required_categories", []) or [])
+    if not current_categories and stable_categories:
+        intent.required_categories = list(stable_categories)
+        applied.extend(f"required_category:{item}" for item in stable_categories)
+    elif current_categories and stable_categories:
+        preferred_categories = list(getattr(intent, "preferred_categories", []) or current_categories)
+        for item in stable_categories:
+            if item not in preferred_categories and item not in current_categories:
+                preferred_categories.append(item)
+                applied.append(f"soft_category:{item}")
+        intent.preferred_categories = preferred_categories
 
-    if not getattr(intent, "preferences", None) and profile_data.get("preferred_preferences"):
-        intent.preferences = list(profile_data.get("preferred_preferences", [])[:3])
+    preference_counts = profile_data.get("preference_counts") or {}
+    stable_preferences = _stable_top_items(preference_counts, limit=3)
+    current_preferences = list(getattr(intent, "preferences", []) or [])
+    soft_preferences = list(getattr(intent, "soft_preferences", []) or current_preferences)
+    if not current_preferences and stable_preferences:
+        for item in stable_preferences:
+            if item not in soft_preferences:
+                soft_preferences.append(item)
+                applied.append(f"soft_preference:{item}")
+    elif current_preferences and stable_preferences:
+        for item in stable_preferences:
+            if item not in current_preferences and item not in soft_preferences:
+                soft_preferences.append(item)
+                applied.append(f"soft_preference:{item}")
+    intent.soft_preferences = soft_preferences
 
-    if not getattr(intent, "avoid", None) and profile_data.get("avoid_preferences"):
-        intent.avoid = list(profile_data.get("avoid_preferences", [])[:2])
+    avoid_counts = profile_data.get("avoid_counts") or {}
+    stable_avoids = _stable_top_items(avoid_counts, limit=2)
+    if not getattr(intent, "avoid", None) and stable_avoids:
+        intent.avoid = list(stable_avoids)
+        applied.extend(f"avoid:{item}" for item in stable_avoids)
 
     profile_pace = profile_data.get("preferred_pace")
     if getattr(intent, "pace", None) in {None, "", "normal"} and profile_pace:
         intent.pace = profile_pace
+        applied.append(f"pace:{profile_pace}")
 
     profile_transport = profile_data.get("preferred_transport_mode")
-    if getattr(intent, "transport_mode", None) in {None, "", "mixed"} and profile_transport:
+    if getattr(intent, "transport_mode", None) in {None, "", "mixed"} and profile_transport in {"walking", "metro", "taxi"}:
         intent.transport_mode = profile_transport
+        applied.append(f"transport:{profile_transport}")
 
     profile_budget = profile_data.get("budget_band")
     if getattr(intent, "budget", None) is None and profile_budget in {"low", "mid", "high"}:
@@ -388,6 +424,91 @@ def apply_profile_bias(intent: Any, profile: Any) -> Any:
         existing_notes = getattr(intent, "notes", None)
         hint = f"profile_budget_band:{profile_budget}"
         intent.notes = f"{existing_notes}; {hint}" if existing_notes else hint
+        applied.append(hint)
+
+    existing_bias = list(getattr(intent, "profile_bias", []) or [])
+    intent.profile_bias = list(dict.fromkeys([*existing_bias, *applied]))
+
+    try:
+        from core.intent_parser import refresh_intent_derived_fields
+
+        refresh_intent_derived_fields(intent)
+    except Exception:
+        try:
+            intent.model_post_init(None)
+        except Exception:
+            pass
+    return intent
+
+
+def apply_session_context(intent: Any, session: Any) -> Any:
+    """Merge current-session context without overriding explicit turn constraints."""
+
+    if intent is None or session is None:
+        return intent
+
+    session_data = session.model_dump(mode="json") if hasattr(session, "model_dump") else dict(session)
+    last_intent = session_data.get("last_intent_summary") or {}
+    if not isinstance(last_intent, dict):
+        return intent
+
+    applied: list[str] = []
+
+    if not getattr(intent, "city", None) and last_intent.get("city"):
+        intent.city = last_intent.get("city")
+        applied.append(f"session_city:{intent.city}")
+
+    if getattr(intent, "budget", None) is None and last_intent.get("budget") is not None:
+        intent.budget = last_intent.get("budget")
+        applied.append(f"session_budget:{intent.budget}")
+
+    if not getattr(intent, "start_location", None) and last_intent.get("start_location"):
+        intent.start_location = last_intent.get("start_location")
+        applied.append(f"session_start_location:{intent.start_location}")
+
+    current_preferences = list(getattr(intent, "preferences", []) or [])
+    current_categories = list(getattr(intent, "required_categories", []) or [])
+    current_avoid = list(getattr(intent, "avoid", []) or [])
+    current_must = list(getattr(intent, "must_include", []) or [])
+
+    if not current_preferences:
+        inherited = [str(item) for item in last_intent.get("preferences", []) or [] if item]
+        intent.preferences = list(dict.fromkeys([*current_preferences, *inherited]))
+        applied.extend(f"session_preference:{item}" for item in inherited)
+    else:
+        soft = list(getattr(intent, "soft_preferences", []) or current_preferences)
+        for item in last_intent.get("preferences", []) or []:
+            token = str(item or "").strip()
+            if token and token not in current_preferences and token not in soft:
+                soft.append(token)
+                applied.append(f"session_soft_preference:{token}")
+        intent.soft_preferences = soft
+
+    if not current_categories:
+        inherited = [str(item) for item in last_intent.get("required_categories", []) or [] if item]
+        intent.required_categories = list(dict.fromkeys([*current_categories, *inherited]))
+        applied.extend(f"session_category:{item}" for item in inherited)
+
+    if not current_avoid:
+        inherited = [str(item) for item in last_intent.get("avoid", []) or [] if item]
+        intent.avoid = list(dict.fromkeys([*current_avoid, *inherited]))
+        applied.extend(f"session_avoid:{item}" for item in inherited)
+
+    if not current_must:
+        inherited = [str(item) for item in last_intent.get("must_include", []) or [] if item]
+        intent.must_include = list(dict.fromkeys([*current_must, *inherited]))
+        applied.extend(f"session_must_include:{item}" for item in inherited)
+
+    if getattr(intent, "pace", None) in {None, "", "normal"} and last_intent.get("pace") in {"fast", "slow"}:
+        intent.pace = last_intent.get("pace")
+        applied.append(f"session_pace:{intent.pace}")
+
+    if getattr(intent, "transport_mode", None) in {None, "", "mixed"} and last_intent.get("transport_mode") in _VALID_TRANSPORT:
+        intent.transport_mode = last_intent.get("transport_mode")
+        applied.append(f"session_transport:{intent.transport_mode}")
+
+    existing = list(getattr(intent, "context_bias", []) or [])
+    intent.context_bias = list(dict.fromkeys([*existing, *applied]))
 
     try:
         from core.intent_parser import refresh_intent_derived_fields

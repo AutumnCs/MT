@@ -102,7 +102,7 @@ class MapApiService {
   Map<String, dynamic> _decodeResponse(http.Response response) {
     if (response.statusCode != 200) {
       return {
-        'provider': 'amap',
+        'provider': 'tdt',
         'enabled': false,
         'success': false,
         'message': 'HTTP ${response.statusCode}',
@@ -115,7 +115,7 @@ class MapApiService {
       return decoded;
     }
     return {
-      'provider': 'amap',
+      'provider': 'tdt',
       'enabled': false,
       'success': false,
       'message': 'Unexpected response format',

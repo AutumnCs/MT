@@ -55,6 +55,11 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "暨南大学",
         "中山大学",
         "华南理工大学",
+        "大学城",
+        "广州大学城",
+        "小洲村",
+        "岭南印象园",
+        "广东科学中心",
     ],
 
     "city_shanghai": [
@@ -114,6 +119,9 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "早餐",
         "夜宵",
         "小吃",
+        "本地小吃",
+        "吃点",
+        "吃点东西",
         "本帮菜",
         "粤菜",
         "川菜",
@@ -122,6 +130,16 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "烧烤",
         "海鲜",
         "素食",
+    ],
+
+    "category_library": [
+        # 图书馆/阅读/自习
+        "图书馆",
+        "图书",
+        "书馆",
+        "阅读",
+        "看书",
+        "自习",
     ],
 
     "category_exhibition": [
@@ -137,7 +155,6 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "画展",
         "摄影展",
         "科技馆",
-        "图书馆",
         "书店",
     ],
 
@@ -167,6 +184,12 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "散步",
         "走走",
         "闲逛",
+        "逛逛",
+        "随便逛逛",
+        "小店",
+        "玩",
+        "游玩",
+        "逛玩",
         "citywalk",
     ],
 
@@ -178,6 +201,7 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "江边",
         "河边",
         "湖边",
+        "滨江",
         "爬山",
         "徒步",
     ],
@@ -220,6 +244,10 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "探店",
         "觅食",
         "地道",
+        "小吃",
+        "本地小吃",
+        "吃点",
+        "吃点东西",
     ],
 
     "prefer_culture": [
@@ -239,9 +267,14 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "本地人",
         "小众",
         "地道",
+        "本帮菜",
+        "粤式点心",
         "特色",
         "原生态",
         "传统",
+        "不要太商业",
+        "别太商业",
+        "不太商业",
     ],
 
     "prefer_night_view": [
@@ -251,18 +284,23 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "夜景观赏",
         "灯光秀",
         "夜游",
+        "江景",
+        "滨江",
     ],
 
     "prefer_quiet": [
         # 安静/放松
         "安静",
         "清净",
+        "清闲",
         "放松",
         "休闲",
         "慢节奏",
         "放松一下",
         "歇一歇",
         "不累",
+        "坐坐",
+        "发呆",
     ],
 
     "prefer_rainy_day": [
@@ -314,6 +352,9 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "少排队",
         "不排队",
         "排队太久",
+        "不想排太久队",
+        "不想排太久",
+        "排太久队",
     ],
 
     "avoid_crowded": [
@@ -323,6 +364,12 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "清静",
         "不挤",
         "人山人海",
+        "避开人多",
+        "避开人多一点",
+        "人别太多",
+        "不要太热门",
+        "别太热门",
+        "不太热门",
     ],
 
     # ----------------------------------------------------------------------
@@ -350,6 +397,9 @@ INTENT_LEXICON: Dict[str, List[str]] = {
         "慢慢来",
         "别太累",
         "不想太累",
+        "别太赶",
+        "不要太赶",
+        "不太赶",
     ],
 }
 
@@ -359,7 +409,7 @@ def prompt_lexicon_excerpt(limit: int = 5) -> str:
 
     sections = [
         ("城市", ["city_guangzhou", "city_shanghai"]),
-        ("类别", ["category_coffee", "category_food", "category_exhibition", "category_night"]),
+        ("类别", ["category_coffee", "category_food", "category_library", "category_exhibition", "category_night"]),
         ("偏好", ["prefer_couple", "prefer_photo", "prefer_food", "prefer_culture", "prefer_local_feature", "prefer_night_view", "prefer_quiet", "prefer_rainy_day", "prefer_walking"]),
         ("避让", ["avoid_spicy", "avoid_far", "avoid_queue", "avoid_crowded"]),
     ]
@@ -447,6 +497,7 @@ def _build_display_labels() -> tuple[dict[str, str], dict[str, str], dict[str, s
         "rainy_day": "雨天",
         "coffee": "咖啡",
         "museum": "博物馆",
+        "library": "图书馆",
         "exhibition": "展览",
         "scene": "景点",
         "street": "街区",
@@ -468,6 +519,7 @@ def _build_display_labels() -> tuple[dict[str, str], dict[str, str], dict[str, s
     category_labels: dict[str, str] = {
         "coffee": "咖啡茶饮",
         "food": "餐饮美食",
+        "library": "图书馆",
         "exhibition": "展览场馆",
         "night": "夜景夜生活",
         "street": "街区漫步",

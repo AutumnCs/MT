@@ -8,7 +8,7 @@
 - constraint_checker: 约束检查服务，验证意图和过滤POI
 - route_planner: 路线规划服务，生成和优化路线
 - response_generator: 响应生成服务，格式化最终输出
-- map_service: 地图服务，调用高德地图API
+- map_service: 地图服务，调用天地图 API 并提供本地 fallback
 - review_analyzer: 评论分析服务，提取POI特征信号
 - route_service: 路线服务，整合所有其他服务
 

@@ -27,9 +27,15 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
+import urllib.request
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-import httpx
+try:
+    import httpx
+except ModuleNotFoundError:
+    httpx = None
 
 from core.intent_parser import normalize_llm_intent, IntentParser
 from core.schemas import IntentDraft, ParsedIntent
@@ -52,6 +58,47 @@ PROVIDER_OPENAI = "openai"
 # 模型配置
 DEFAULT_DASHSCOPE_MODEL = "qwen-plus"
 DEFAULT_OPENAI_MODEL = "gpt-4"
+
+
+def _load_env_file() -> None:
+    """Load local .env values without requiring python-dotenv."""
+
+    candidates = [
+        Path(__file__).resolve().parents[1] / ".env",
+        Path(__file__).resolve().parents[2] / ".env",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            for raw_line in path.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+        except OSError:
+            continue
+
+
+_load_env_file()
+
+
+def _post_json_with_urllib(
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        body = response.read().decode("utf-8")
+    result = json.loads(body)
+    return result if isinstance(result, dict) else {}
 
 
 # ============================================================================
@@ -86,6 +133,9 @@ class LLMIntentClient:
         返回：
             可用的提供商名称，或 None（如果都不可用）
         """
+        if os.getenv("LLM_INTENT_DISABLE_LLM") == "1":
+            return None
+
         # 检查 DashScope
         if os.getenv("DASHSCOPE_API_KEY"):
             return PROVIDER_DASHSCOPE
@@ -178,8 +228,10 @@ class LLMIntentClient:
             LLM 响应的文本内容，或 None
         """
         api_key = os.getenv("DASHSCOPE_API_KEY")
+        if not api_key:
+            return None
         model = os.getenv("DASHSCOPE_MODEL") or DEFAULT_DASHSCOPE_MODEL
-        base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+        base_url = os.getenv("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -188,43 +240,53 @@ class LLMIntentClient:
 
         payload = {
             "model": model,
-            "input": {
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ]
-            },
-            "parameters": {
-                "temperature": 0.1,  # 低温度，提高确定性
-                "result_format": "message",
-            },
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,
         }
 
         # 重试逻辑
         last_error = None
         for attempt in range(MAX_RETRIES):
             try:
-                with httpx.Client(timeout=timeout) as client:
-                    response = client.post(
-                        base_url,
-                        headers=headers,
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+                if httpx is not None:
+                    with httpx.Client(timeout=timeout) as client:
+                        response = client.post(
+                            base_url,
+                            headers=headers,
+                            json=payload,
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                else:
+                    result = _post_json_with_urllib(base_url, headers, payload, timeout)
 
-                    # 提取响应内容
-                    if "output" in result and "choices" in result["output"]:
-                        choices = result["output"]["choices"]
-                        if choices and "message" in choices[0]:
-                            return choices[0]["message"]["content"]
+                if "choices" in result and result["choices"]:
+                    message = result["choices"][0].get("message") or {}
+                    content = message.get("content")
+                    if content:
+                        return content
+                if "output" in result and "choices" in result["output"]:
+                    choices = result["output"]["choices"]
+                    if choices and "message" in choices[0]:
+                        return choices[0]["message"]["content"]
 
-            except httpx.TimeoutException:
+            except TimeoutError:
                 last_error = "请求超时"
-            except httpx.HTTPStatusError as e:
-                last_error = f"HTTP 错误: {e.response.status_code}"
+            except urllib.error.HTTPError as e:
+                last_error = f"HTTP 错误: {e.code}"
+            except urllib.error.URLError as e:
+                last_error = f"网络错误: {e.reason}"
             except Exception as e:
-                last_error = str(e)
+                if httpx is not None and e.__class__.__name__ == "TimeoutException":
+                    last_error = "请求超时"
+                elif httpx is not None and e.__class__.__name__ == "HTTPStatusError":
+                    response = getattr(e, "response", None)
+                    last_error = f"HTTP 错误: {getattr(response, 'status_code', 'unknown')}"
+                else:
+                    last_error = str(e)
 
             # 重试前等待
             if attempt < MAX_RETRIES - 1:
@@ -250,6 +312,75 @@ class LLMIntentClient:
             LLM 响应的文本内容，或 None
         """
         api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return None
+        model = os.getenv("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
+        base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,  # 低温度，提高确定性
+        }
+
+        # 重试逻辑
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                if httpx is not None:
+                    with httpx.Client(timeout=timeout) as client:
+                        response = client.post(
+                            base_url,
+                            headers=headers,
+                            json=payload,
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                else:
+                    result = _post_json_with_urllib(base_url, headers, payload, timeout)
+
+                # 提取响应内容
+                if "choices" in result and result["choices"]:
+                    return result["choices"][0]["message"]["content"]
+
+            except TimeoutError:
+                last_error = "请求超时"
+            except urllib.error.HTTPError as e:
+                last_error = f"HTTP 错误: {e.code}"
+            except urllib.error.URLError as e:
+                last_error = f"网络错误: {e.reason}"
+            except Exception as e:
+                if httpx is not None and e.__class__.__name__ == "TimeoutException":
+                    last_error = "请求超时"
+                elif httpx is not None and e.__class__.__name__ == "HTTPStatusError":
+                    response = getattr(e, "response", None)
+                    last_error = f"HTTP 错误: {getattr(response, 'status_code', 'unknown')}"
+                else:
+                    last_error = str(e)
+
+            # 重试前等待
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(1)
+
+        return None
+
+    def _call_openai_legacy_removed(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        timeout: float,
+    ) -> Optional[str]:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if httpx is None:
+            return None
         model = os.getenv("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
         base_url = os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1/chat/completions"
 
@@ -336,8 +467,9 @@ class LLMIntentClient:
             # 归一化为 ParsedIntent
             return normalize_llm_intent(draft_dict, query, city)
 
-        except json.JSONDecodeError:
-            # JSON 解析失败
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            if os.getenv("LLM_INTENT_DEBUG") == "1":
+                print(f"LLM JSON 解析失败: {e}; response_head={response[:500]!r}")
             return None
 
     def _extract_json(self, text: str) -> Optional[str]:
@@ -356,28 +488,50 @@ class LLMIntentClient:
         text = text.strip()
 
         # 情况1：直接是 JSON
-        if text.startswith("{") and text.endswith("}"):
-            return text
+        if text.startswith("{"):
+            try:
+                obj, end = json.JSONDecoder().raw_decode(text)
+                if isinstance(obj, dict):
+                    return text[:end]
+            except json.JSONDecodeError:
+                pass
 
         # 情况2：包含在代码块中
         if "```json" in text:
             parts = text.split("```json")
             if len(parts) > 1:
                 json_part = parts[1].split("```")[0].strip()
-                return json_part
+                try:
+                    obj, end = json.JSONDecoder().raw_decode(json_part)
+                    if isinstance(obj, dict):
+                        return json_part[:end]
+                except json.JSONDecodeError:
+                    pass
 
         # 情况3：包含在反引号中
         if "`" in text:
             for part in text.split("`"):
                 part = part.strip()
-                if part.startswith("{") and part.endswith("}"):
-                    return part
+                if not part.startswith("{"):
+                    continue
+                try:
+                    obj, end = json.JSONDecoder().raw_decode(part)
+                    if isinstance(obj, dict):
+                        return part[:end]
+                except json.JSONDecodeError:
+                    continue
 
-        # 情况4：查找第一个 { 到最后一个 }
-        first_brace = text.find("{")
-        last_brace = text.rfind("}")
-        if first_brace >= 0 and last_brace > first_brace:
-            return text[first_brace : last_brace + 1]
+        # 情况4：从每个左大括号开始，寻找第一个可解析的 JSON 对象
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(text):
+            if char != "{":
+                continue
+            try:
+                obj, end = decoder.raw_decode(text[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                return text[index : index + end]
 
         return None
 

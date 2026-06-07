@@ -5,11 +5,28 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field
 
 
 def _now() -> str:
     return datetime.now().isoformat()
+
+
+class BaseModel(PydanticBaseModel):
+    class Config:
+        extra = "allow"
+
+    if not hasattr(PydanticBaseModel, "model_dump"):
+        def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            kwargs.pop("mode", None)
+            return self.dict(*args, **kwargs)
+
+    if not hasattr(PydanticBaseModel, "model_validate"):
+        @classmethod
+        def model_validate(cls, value: Any) -> Any:
+            if isinstance(value, cls):
+                return value
+            return cls.parse_obj(value)
 
 
 class SessionContext(BaseModel):

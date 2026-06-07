@@ -14,6 +14,7 @@ class RouteApiService {
   }
 
   static const Duration timeout = Duration(seconds: 30);
+  static const bool enableMockFallback = false;
 
   final http.Client _client;
 
@@ -34,9 +35,19 @@ class RouteApiService {
         return RouteResponse.fromJson(data);
       }
 
-      throw ApiException('生成路线失败: ${response.statusCode}', statusCode: response.statusCode);
+      final detail = utf8.decode(response.bodyBytes);
+      throw ApiException(
+        '生成路线失败: ${response.statusCode}${detail.isEmpty ? '' : '，$detail'}',
+        statusCode: response.statusCode,
+      );
     } catch (e) {
       if (e is ApiException) rethrow;
+      if (!enableMockFallback) {
+        final message = e is SocketException
+            ? '无法连接后端生成路线，请确认后端服务已启动'
+            : '生成路线失败，返回数据解析异常';
+        throw ApiException('$message：$e');
+      }
       return _getMockRouteResponse(request.query);
     }
   }
@@ -56,9 +67,19 @@ class RouteApiService {
         return RouteResponse.fromJson(data);
       }
 
-      throw ApiException('修改路线失败: ${response.statusCode}', statusCode: response.statusCode);
+      final detail = utf8.decode(response.bodyBytes);
+      throw ApiException(
+        '修改路线失败: ${response.statusCode}${detail.isEmpty ? '' : '，$detail'}',
+        statusCode: response.statusCode,
+      );
     } catch (e) {
       if (e is ApiException) rethrow;
+      if (!enableMockFallback) {
+        final message = e is SocketException
+            ? '无法连接后端修改路线，请确认后端服务已启动'
+            : '修改路线失败，返回数据解析异常';
+        throw ApiException('$message：$e');
+      }
       return _getMockRouteResponse(
         '${request.originalQuery ?? ''} ${request.query}'.trim(),
         isModified: true,
@@ -368,7 +389,6 @@ class RouteApiService {
 
   Map<String, dynamic> _buildMockMapPreview(List<RouteStop> stops) {
     final markers = <Map<String, dynamic>>[];
-    final polyline = <Map<String, dynamic>>[];
     for (var i = 0; i < stops.length; i++) {
       final stop = stops[i];
       markers.add({
@@ -381,11 +401,8 @@ class RouteApiService {
         'label': i + 1,
         'address': stop.poi.address,
       });
-      polyline.add({
-        'latitude': stop.poi.latitude,
-        'longitude': stop.poi.longitude,
-      });
     }
+    final polyline = _buildPreviewPolyline(markers);
 
     double? minLat;
     double? maxLat;
@@ -434,6 +451,7 @@ class RouteApiService {
       'provider': 'local',
       'enabled': false,
       'mode': 'walking',
+      'polyline_source': 'local_approx',
       'route_title': 'mock-map-preview',
       'route_summary': '本地 mock 路线预览',
       'center': center,
@@ -448,6 +466,41 @@ class RouteApiService {
       'segments': segments,
       'point_count': markers.length,
     };
+  }
+
+  List<Map<String, dynamic>> _buildPreviewPolyline(List<Map<String, dynamic>> markers) {
+    final validMarkers = markers
+        .where((marker) => marker['latitude'] is num && marker['longitude'] is num)
+        .toList();
+    final points = <Map<String, dynamic>>[];
+
+    for (var i = 0; i < validMarkers.length; i++) {
+      final start = validMarkers[i];
+      final startLat = (start['latitude'] as num).toDouble();
+      final startLng = (start['longitude'] as num).toDouble();
+      if (points.isEmpty) {
+        points.add({'latitude': startLat, 'longitude': startLng});
+      }
+
+      if (i >= validMarkers.length - 1) continue;
+
+      final end = validMarkers[i + 1];
+      final endLat = (end['latitude'] as num).toDouble();
+      final endLng = (end['longitude'] as num).toDouble();
+      final deltaLat = endLat - startLat;
+      final deltaLng = endLng - startLng;
+      final elbowLng = startLng + deltaLng * (i.isEven ? 0.42 : 0.58);
+      final elbowLat = startLat + deltaLat * (i.isEven ? 0.58 : 0.42);
+
+      points.addAll([
+        {'latitude': startLat, 'longitude': elbowLng},
+        {'latitude': elbowLat, 'longitude': elbowLng},
+        {'latitude': elbowLat, 'longitude': startLng + deltaLng * 0.84},
+        {'latitude': endLat, 'longitude': endLng},
+      ]);
+    }
+
+    return points;
   }
 
   void dispose() {

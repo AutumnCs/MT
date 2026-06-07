@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/route_models.dart';
 import '../services/route_api_service.dart';
+import '../widgets/route_map_view.dart';
 import 'clarification_page.dart';
 import 'knowledge_explanation_page.dart';
 
@@ -23,6 +24,8 @@ class RouteResultPage extends StatefulWidget {
 }
 
 class _RouteResultPageState extends State<RouteResultPage> {
+  static const bool _showRouteMapPanel = bool.fromEnvironment('SHOW_ROUTE_MAP_PANEL');
+
   final TextEditingController _modifyController = TextEditingController();
   bool _isLoading = false;
   String? _loadingMessage;
@@ -77,7 +80,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
   }
 
   Future<void> _copyRouteSummary() async {
-    final route = widget.routeResponse;
+    final route = _activeRoute();
     await Clipboard.setData(ClipboardData(text: _buildShareText(route)));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -101,11 +104,12 @@ class _RouteResultPageState extends State<RouteResultPage> {
   }
 
   void _openKnowledgePage() {
+    final route = _activeRoute();
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => KnowledgeExplanationPage(
-          routeResponse: widget.routeResponse,
+          routeResponse: route,
           originalQuery: widget.originalQuery,
         ),
       ),
@@ -118,7 +122,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('?????${option.strategyType}'),
+        content: Text('已选择${option.strategyType}'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -194,7 +198,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
       final request = ModifyRequest(
         query: query,
         originalQuery: widget.originalQuery,
-        currentRoute: widget.routeResponse.toJson(),
+        currentRoute: _activeRoute().toJson(),
       );
 
       final apiService = RouteApiService();
@@ -212,7 +216,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
               clarificationResponse: newRouteResponse,
               originalQuery: widget.originalQuery,
               currentCity: widget.currentCity,
-              currentRoute: widget.routeResponse.toJson(),
+              currentRoute: _activeRoute().toJson(),
               isModification: true,
             ),
           ),
@@ -262,9 +266,51 @@ class _RouteResultPageState extends State<RouteResultPage> {
     );
   }
 
+  RouteOption? _selectedRouteOption(RouteResponse route) {
+    if (route.routeOptions.isEmpty) return null;
+    final safeIndex = _selectedStrategyIndex.clamp(0, route.routeOptions.length - 1).toInt();
+    return route.routeOptions[safeIndex];
+  }
+
+  RouteResponse _activeRoute() {
+    final base = widget.routeResponse;
+    final option = _selectedRouteOption(base);
+    if (option == null || option.routeStops.isEmpty) {
+      return base;
+    }
+
+    return RouteResponse(
+      title: base.title,
+      summary: base.summary,
+      totalCost: option.totalCost,
+      totalDuration: option.totalDuration,
+      totalDistance: option.totalDistance,
+      poiCount: option.poiCount,
+      coveredTypes: option.coveredTypes.isNotEmpty ? option.coveredTypes : base.coveredTypes,
+      stops: option.routeStops,
+      routeExplanation: base.routeExplanation,
+      strategyType: option.strategyType,
+      routeScore: option.routeScore,
+      travelTimeRatio: base.travelTimeRatio,
+      warnings: base.warnings,
+      routeOptions: base.routeOptions,
+      originalQuery: base.originalQuery,
+      intentSummary: base.intentSummary,
+      parseSource: base.parseSource,
+      appliedPreferences: base.appliedPreferences,
+      generatedAt: base.generatedAt,
+      mapPreview: option.mapPreview ?? base.mapPreview,
+      trace: base.trace,
+      clarificationNeeded: base.clarificationNeeded,
+      clarificationQuestion: base.clarificationQuestion,
+      clarificationOptions: base.clarificationOptions,
+      clarificationReason: base.clarificationReason,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final route = widget.routeResponse;
+    final route = _activeRoute();
     return Scaffold(
       body: Stack(
         children: [
@@ -284,8 +330,10 @@ class _RouteResultPageState extends State<RouteResultPage> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                       children: [
-                        _buildMapHero(route),
-                        const SizedBox(height: 16),
+                        if (_showRouteMapPanel) ...[
+                          _buildMapHero(route),
+                          const SizedBox(height: 16),
+                        ],
                         _buildSummaryCard(route),
                         const SizedBox(height: 14),
                         _buildSystemUnderstandingCard(route),
@@ -363,9 +411,9 @@ class _RouteResultPageState extends State<RouteResultPage> {
 
   Widget _buildMapHero(RouteResponse route) {
     final preview = route.mapPreview ?? const <String, dynamic>{};
-    final points = _extractMapPoints(preview);
-    final enabled = preview['enabled'] == true;
-    final provider = preview['provider']?.toString() ?? 'local';
+    final width = MediaQuery.sizeOf(context).width;
+    final mapHeight = width >= 900 ? 320.0 : 220.0;
+    final mapLabels = RouteMapView.labels(preview);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -383,38 +431,6 @@ class _RouteResultPageState extends State<RouteResultPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: AspectRatio(
-                  aspectRatio: 16 / 10,
-                  child: _RoutePreviewMapCanvas(
-                    preview: preview,
-                    points: points,
-                    enabled: enabled,
-                    provider: provider,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 10,
-                right: 10,
-                child: TextButton.icon(
-                  onPressed: () => _openMapPreviewSheet(route),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF111827),
-                    backgroundColor: Colors.white.withValues(alpha: 0.92),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                  ),
-                  icon: const Icon(Icons.open_in_full, size: 16),
-                  label: const Text('展开'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -436,7 +452,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  enabled ? '地图联动' : '本地预览',
+                  mapLabels.mapLabel,
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -455,7 +471,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
               height: 1.55,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -463,8 +479,95 @@ class _RouteResultPageState extends State<RouteResultPage> {
               _buildDarkTag('¥${route.totalCost} 预算'),
               _buildDarkTag('${route.totalDuration} 分钟'),
               _buildDarkTag('${route.poiCount} 个站点'),
-              _buildDarkTag(provider == 'amap' ? '高德数据' : '本地预览'),
+              _buildDarkTag(mapLabels.sourceLabel),
+              _buildDarkTag(mapLabels.coordinateLabel),
+              _buildDarkTag(mapLabels.routeLineLabel),
             ],
+          ),
+          const SizedBox(height: 14),
+          _buildRouteMiniPlan(route),
+          const SizedBox(height: 14),
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: SizedBox(
+                  height: mapHeight,
+                  width: double.infinity,
+                  child: RouteMapView(
+                    preview: preview,
+                    city: widget.currentCity,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 10,
+                right: 10,
+                child: TextButton.icon(
+                  onPressed: () => _openMapPreviewSheet(route),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF111827),
+                    backgroundColor: Colors.white.withValues(alpha: 0.92),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  ),
+                  icon: const Icon(Icons.open_in_full, size: 16),
+                  label: const Text('展开'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteMiniPlan(RouteResponse route) {
+    final stopNames = route.stops.map((stop) => stop.poi.name).take(4).toList();
+    final remaining = route.stops.length - stopNames.length;
+    final pathText = [
+      ...stopNames,
+      if (remaining > 0) '等 $remaining 站',
+    ].join(' → ');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '路线安排',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          if (pathText.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              pathText,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.88),
+                height: 1.45,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: route.stops.take(3).map((stop) {
+              final time = stop.arrivalTime.isNotEmpty ? '${stop.arrivalTime} 到达' : '${stop.stayMinutes} 分钟';
+              return _buildDarkTag('$time · ${stop.poi.categoryLabel}');
+            }).toList(),
           ),
         ],
       ),
@@ -734,13 +837,16 @@ class _RouteResultPageState extends State<RouteResultPage> {
         ? route.routeOptions
         : [
             RouteOption(
-              strategyType: route.strategyType ?? '????',
+              strategyType: route.strategyType ?? '稳妥方案',
               routeScore: route.routeScore ?? 0,
               totalCost: route.totalCost,
               totalDuration: route.totalDuration,
               totalDistance: route.totalDistance,
               poiCount: route.poiCount,
               stops: route.stops.map((stop) => stop.poi.name).toList(),
+              routeStops: route.stops,
+              coveredTypes: route.coveredTypes,
+              mapPreview: route.mapPreview,
             ),
           ];
 
@@ -753,7 +859,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '????',
+          '候选方案',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827)),
         ),
         const SizedBox(height: 10),
@@ -810,7 +916,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: const Text(
-                                'Selected',
+                                '当前',
                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
                               ),
                             ),
@@ -818,17 +924,17 @@ class _RouteResultPageState extends State<RouteResultPage> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        selected ? '???????' : '????????',
+                        selected ? '当前展示的主方案' : '点击查看这个方案',
                         style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                       ),
                       const Spacer(),
                       Text(
-                        '?${option.totalCost} ? ${option.totalDuration} ??',
+                        '¥${option.totalCost} · ${option.totalDuration} 分钟',
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF111827)),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${option.poiCount} ??? ? ${option.totalDistance.toStringAsFixed(1)} km',
+                        '${option.poiCount} 站 · ${option.totalDistance.toStringAsFixed(1)} km',
                         style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                       ),
                     ],
@@ -843,7 +949,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
         if (selectedOption != null) ...[
           const SizedBox(height: 10),
           Text(
-            '?????${selectedOption.strategyType}',
+            '当前选择：${selectedOption.strategyType}',
             style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
           ),
         ],
@@ -999,7 +1105,9 @@ class _RouteResultPageState extends State<RouteResultPage> {
     if (label != null && label.isNotEmpty) parts.add(label);
     if (duration != null && duration.isNotEmpty) parts.add('$duration 分钟');
     if (distance != null && distance.isNotEmpty) parts.add('$distance km');
-    if (provider != null && provider.isNotEmpty) parts.add(provider == 'amap' ? '高德' : provider);
+    if (provider != null && provider.isNotEmpty) {
+      parts.add(provider == 'tdt' ? '天地图' : provider);
+    }
     return parts.isEmpty ? '转场信息补充中' : parts.join(' · ');
   }
 
@@ -1261,8 +1369,7 @@ class _RouteResultPageState extends State<RouteResultPage> {
       builder: (context) {
         final preview = route.mapPreview ?? const <String, dynamic>{};
         final points = _extractMapPoints(preview);
-        final enabled = preview['enabled'] == true;
-        final provider = preview['provider']?.toString() ?? 'local';
+        final mapLabels = RouteMapView.labels(preview);
 
         return DraggableScrollableSheet(
           initialChildSize: 0.82,
@@ -1303,11 +1410,9 @@ class _RouteResultPageState extends State<RouteResultPage> {
                       borderRadius: BorderRadius.circular(26),
                       child: SizedBox(
                         height: 360,
-                        child: _RoutePreviewMapCanvas(
+                        child: RouteMapView(
                           preview: preview,
-                          points: points,
-                          enabled: enabled,
-                          provider: provider,
+                          city: widget.currentCity,
                         ),
                       ),
                     ),
@@ -1317,8 +1422,8 @@ class _RouteResultPageState extends State<RouteResultPage> {
                       runSpacing: 8,
                       children: [
                         _buildSummaryTag('节点 ${points.length}'),
-                        _buildSummaryTag(enabled ? '已联动地图' : '本地预览'),
-                        _buildSummaryTag(provider == 'amap' ? '高德' : provider),
+                        _buildSummaryTag(mapLabels.mapLabel),
+                        _buildSummaryTag(mapLabels.sourceLabel),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -1392,25 +1497,12 @@ class _RouteResultPageState extends State<RouteResultPage> {
     final markers = List<Map<String, dynamic>>.from(preview['markers'] ?? const []);
     if (markers.isEmpty) return const [];
 
-    final bounds = preview['bounds'];
-    final minLat = (bounds is Map ? (bounds['min_latitude'] as num?)?.toDouble() : null) ?? 0.0;
-    final maxLat = (bounds is Map ? (bounds['max_latitude'] as num?)?.toDouble() : null) ?? 0.0;
-    final minLng = (bounds is Map ? (bounds['min_longitude'] as num?)?.toDouble() : null) ?? 0.0;
-    final maxLng = (bounds is Map ? (bounds['max_longitude'] as num?)?.toDouble() : null) ?? 0.0;
-    final latSpan = (maxLat - minLat).abs() < 0.000001 ? 0.001 : (maxLat - minLat);
-    final lngSpan = (maxLng - minLng).abs() < 0.000001 ? 0.001 : (maxLng - minLng);
-
     return markers.asMap().entries.map((entry) {
       final marker = entry.value;
-      final lat = (marker['latitude'] as num?)?.toDouble() ?? 0.0;
-      final lng = (marker['longitude'] as num?)?.toDouble() ?? 0.0;
-      final x = ((lng - minLng) / lngSpan).clamp(0.08, 0.92);
-      final y = (1 - ((lat - minLat) / latSpan)).clamp(0.10, 0.90);
       return _MapPreviewPoint(
         label: '${marker['label'] ?? entry.key + 1}',
         name: marker['name']?.toString() ?? '',
         address: marker['address']?.toString() ?? '',
-        position: Offset(x.toDouble(), y.toDouble()),
       );
     }).toList();
   }
@@ -1459,232 +1551,10 @@ class _MapPreviewPoint {
   final String label;
   final String name;
   final String address;
-  final Offset position;
 
   const _MapPreviewPoint({
     required this.label,
     required this.name,
     required this.address,
-    required this.position,
   });
-}
-
-class _RoutePreviewMapCanvas extends StatelessWidget {
-  final Map<String, dynamic> preview;
-  final List<_MapPreviewPoint> points;
-  final bool enabled;
-  final String provider;
-
-  const _RoutePreviewMapCanvas({
-    required this.preview,
-    required this.points,
-    required this.enabled,
-    required this.provider,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (points.isEmpty) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF122636), Color(0xFF203447)],
-          ),
-        ),
-        child: Center(
-          child: Text(
-            enabled ? '地图点位准备中' : '暂无地图点位',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.86),
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return CustomPaint(
-      painter: _RoutePreviewMapPainter(
-        points: points,
-        enabled: enabled,
-        provider: provider,
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: 16,
-            top: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                provider == 'amap' ? '高德联动' : '本地预览',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 16,
-            bottom: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                '${points.length} 个站点',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoutePreviewMapPainter extends CustomPainter {
-  final List<_MapPreviewPoint> points;
-  final bool enabled;
-  final String provider;
-
-  const _RoutePreviewMapPainter({
-    required this.points,
-    required this.enabled,
-    required this.provider,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final bgPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF122636), Color(0xFF223A4C), Color(0xFF142837)],
-      ).createShader(rect);
-    canvas.drawRect(rect, bgPaint);
-
-    final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
-      ..strokeWidth = 1;
-    for (var x = 0.0; x <= size.width; x += size.width / 6) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-    }
-    for (var y = 0.0; y <= size.height; y += size.height / 5) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    final lanePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..strokeCap = StrokeCap.round;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.1, size.height * 0.18, size.width * 0.78, size.height * 0.56),
-        const Radius.circular(26),
-      ),
-      lanePaint,
-    );
-
-    final linePoints = points
-        .map(
-          (point) => Offset(
-            size.width * point.position.dx,
-            size.height * point.position.dy,
-          ),
-        )
-        .toList();
-
-    if (linePoints.length > 1) {
-      final linePaint = Paint()
-        ..color = const Color(0xFFF2C230)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = compactStroke(size.width)
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      final path = Path()..moveTo(linePoints.first.dx, linePoints.first.dy);
-      for (var i = 1; i < linePoints.length; i++) {
-        final prev = linePoints[i - 1];
-        final current = linePoints[i];
-        final control1 = Offset((prev.dx + current.dx) / 2, prev.dy);
-        final control2 = Offset((prev.dx + current.dx) / 2, current.dy);
-        path.cubicTo(control1.dx, control1.dy, control2.dx, control2.dy, current.dx, current.dy);
-      }
-      canvas.drawPath(path, linePaint);
-    }
-
-    for (var i = 0; i < linePoints.length; i++) {
-      final point = linePoints[i];
-      final shadowPaint = Paint()
-        ..color = Colors.black.withValues(alpha: 0.28)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-      canvas.drawCircle(point.translate(2, 5), 10, shadowPaint);
-
-      final outerPaint = Paint()..color = Colors.white;
-      canvas.drawCircle(point, 13, outerPaint);
-
-      final innerPaint = Paint()
-        ..color = i == 0 ? const Color(0xFF34D399) : const Color(0xFFF2C230);
-      canvas.drawCircle(point, 10, innerPaint);
-
-      final labelPainter = TextPainter(
-        text: TextSpan(
-          text: points[i].label,
-          style: const TextStyle(
-            color: Color(0xFF111827),
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      final labelOffset = Offset(point.dx - labelPainter.width / 2, point.dy - labelPainter.height / 2);
-      labelPainter.paint(canvas, labelOffset);
-    }
-
-    if (!enabled) {
-      final hintPainter = TextPainter(
-        text: TextSpan(
-          text: provider == 'amap' ? '地图数据未完全联动，当前展示本地预览' : '本地地图预览',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.72),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: size.width * 0.72);
-      hintPainter.paint(canvas, Offset(size.width * 0.18, size.height * 0.08));
-    }
-  }
-
-  double compactStroke(double width) {
-    if (width < 280) return 4.0;
-    if (width < 360) return 4.5;
-    return 5.0;
-  }
-
-  @override
-  bool shouldRepaint(covariant _RoutePreviewMapPainter oldDelegate) {
-    return oldDelegate.points != points ||
-        oldDelegate.enabled != enabled ||
-        oldDelegate.provider != provider;
-  }
 }

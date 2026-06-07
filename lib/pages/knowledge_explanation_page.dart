@@ -18,6 +18,8 @@ class KnowledgeExplanationPage extends StatelessWidget {
     final rawQuery = originalQuery.trim().isEmpty
         ? (routeResponse.originalQuery ?? '').trim()
         : originalQuery.trim();
+    final modification = routeResponse.trace?['modification'];
+    final hasModification = modification is Map && modification['is_modification'] == true;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
@@ -32,6 +34,16 @@ class KnowledgeExplanationPage extends StatelessWidget {
         children: [
           _buildHeroCard(parsedSummary, rawQuery),
           const SizedBox(height: 18),
+          _buildAlgorithmChainSection(),
+          if (hasModification) ...[
+            const SizedBox(height: 18),
+            _buildModificationSection(),
+          ],
+          const SizedBox(height: 18),
+          _buildScoringSection(),
+          const SizedBox(height: 18),
+          _buildRouteEvidenceSection(),
+          const SizedBox(height: 18),
           _buildExplainSection(),
           const SizedBox(height: 18),
           _buildCurrentRouteSection(),
@@ -39,6 +51,198 @@ class KnowledgeExplanationPage extends StatelessWidget {
           _buildHowToAdjustSection(),
         ],
       ),
+    );
+  }
+
+  Map<String, dynamic> get _trace => routeResponse.trace ?? const {};
+
+  List<String> _stringList(dynamic value) {
+    if (value is List) {
+      return value.where((item) => item != null).map((item) => item.toString()).toList();
+    }
+    return const [];
+  }
+
+  String _traceText(String key, {String fallback = '未记录'}) {
+    final value = _trace[key];
+    if (value == null) return fallback;
+    if (value is List) return value.isEmpty ? fallback : value.join('、');
+    if (value is Map) return value.isEmpty ? fallback : value.toString();
+    final text = value.toString().trim();
+    return text.isEmpty ? fallback : text;
+  }
+
+  Widget _buildAlgorithmChainSection() {
+    final candidateCount = _traceText('candidate_count');
+    final rankingCount = _traceText('ranking_candidate_count');
+    final selectedIds = _stringList(_trace['selected_poi_ids']);
+    final contextBias = _stringList(_trace['context_bias']);
+    final profileBias = _stringList(_trace['profile_bias']);
+    final areaClusters = _stringList(_trace['area_clusters']);
+
+    final steps = [
+      _PipelineStep(
+        title: '理解需求',
+        body: '先把口语输入转成城市、预算、时间、偏好、避开项和必去点。解析来源：${routeResponse.parseSource ?? _traceText('parse_source')}。',
+        icon: Icons.psychology_alt_outlined,
+      ),
+      _PipelineStep(
+        title: '结合记忆',
+        body: contextBias.isEmpty && profileBias.isEmpty
+            ? '本次没有明显历史偏好参与，主要按当前输入推荐。'
+            : '本次加入了上下文偏好：${[...contextBias, ...profileBias].join('、')}。',
+        icon: Icons.history_outlined,
+      ),
+      _PipelineStep(
+        title: '召回与粗排',
+        body: '系统不会把所有地点一次性丢给大模型，而是先从地图/POI库里召回候选，再按类别、语义、距离、预算、人流风险粗排。进入排序链路的候选数：$rankingCount。',
+        icon: Icons.manage_search_outlined,
+      ),
+      _PipelineStep(
+        title: '路线搜索',
+        body: '再用路线搜索选择站点和顺序，优先让转场顺、时间够、预算不炸。最终选中 ${selectedIds.length} 个站点，主要区域：${areaClusters.isEmpty ? '未记录' : areaClusters.join('、')}。',
+        icon: Icons.route_outlined,
+      ),
+      _PipelineStep(
+        title: '生成解释',
+        body: '最后才把路线结果组织成自然语言解释。大模型主要参与意图理解和表达，不负责逐个读取全部地点。',
+        icon: Icons.auto_awesome_outlined,
+      ),
+    ];
+
+    return _SectionCard(
+      title: '本次算法链路',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildMetricGrid([
+            _MetricData('候选池', candidateCount, Icons.dataset_outlined),
+            _MetricData('精排候选', rankingCount, Icons.filter_alt_outlined),
+            _MetricData('选中站点', '${selectedIds.length}', Icons.place_outlined),
+            _MetricData('地图来源', _traceText('map_provider', fallback: 'local'), Icons.map_outlined),
+          ]),
+          const SizedBox(height: 14),
+          ...steps.map(
+            (step) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _PipelineCard(step: step),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModificationSection() {
+    final modification = _trace['modification'];
+    if (modification is! Map || modification['is_modification'] != true) {
+      return const SizedBox.shrink();
+    }
+
+    final added = _stringList(modification['added_poi_ids']);
+    final removed = _stringList(modification['removed_poi_ids']);
+    final kept = _stringList(modification['kept_poi_ids']);
+    final changed = modification['changed'] == true;
+    final query = (modification['modification_query'] ?? '').toString();
+
+    return _SectionCard(
+      title: '这次是否真的修改了',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _StatusBanner(
+            ok: changed,
+            title: changed ? '已重新规划并产生变化' : '已重新计算，但站点没有变化',
+            body: changed
+                ? '系统根据“$query”重新召回、排序和规划，下面是站点变化。'
+                : '这通常说明新约束下原方案仍然得分最高，或候选库里缺少更合适的替换点。',
+          ),
+          const SizedBox(height: 12),
+          _buildMetricGrid([
+            _MetricData('新增', '${added.length}', Icons.add_location_alt_outlined),
+            _MetricData('移除', '${removed.length}', Icons.wrong_location_outlined),
+            _MetricData('保留', '${kept.length}', Icons.check_circle_outline),
+          ]),
+          if (added.isNotEmpty || removed.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...added.map((id) => _miniChip(Icons.add, '新增 $id')),
+                ...removed.map((id) => _miniChip(Icons.remove, '移除 $id')),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScoringSection() {
+    final routeScore = routeResponse.routeScore == null
+        ? '未记录'
+        : routeResponse.routeScore!.toStringAsFixed(2);
+    final travelRatio = routeResponse.travelTimeRatio == null
+        ? '未记录'
+        : '${(routeResponse.travelTimeRatio! * 100).round()}%';
+
+    return _SectionCard(
+      title: '评分标准',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildMetricGrid([
+            _MetricData('路线分', routeScore, Icons.stacked_line_chart_outlined),
+            _MetricData('路上占比', travelRatio, Icons.timer_outlined),
+            _MetricData('总距离', '${routeResponse.totalDistance.toStringAsFixed(1)}km', Icons.social_distance_outlined),
+            _MetricData('预计花费', '${routeResponse.totalCost}元', Icons.payments_outlined),
+          ]),
+          const SizedBox(height: 14),
+          const Text(
+            'POI排序主要看：偏好匹配、语义匹配、类别匹配、评分、预算、游玩时长，以及排队/拥挤/价格惩罚。路线规划再看：总时间是否合适、交通时间是否过高、站点是否顺路、类别覆盖、营业时间和预算。',
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF374151),
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteEvidenceSection() {
+    final stops = routeResponse.stops;
+    return _SectionCard(
+      title: '为什么选这些点',
+      child: Column(
+        children: stops
+            .map(
+              (stop) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _StopReasonCard(stop: stop),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildMetricGrid(List<_MetricData> metrics) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth > 520 ? 4 : 2;
+        return GridView.count(
+          crossAxisCount: columns,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: columns == 4 ? 1.45 : 1.75,
+          children: metrics.map((item) => _MetricTile(data: item)).toList(),
+        );
+      },
     );
   }
 
@@ -414,6 +618,269 @@ class _KnowledgeCard extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricData {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _MetricData(this.label, this.value, this.icon);
+}
+
+class _MetricTile extends StatelessWidget {
+  final _MetricData data;
+
+  const _MetricTile({
+    required this.data,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(data.icon, size: 18, color: const Color(0xFF2563EB)),
+          const SizedBox(height: 8),
+          Text(
+            data.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          Text(
+            data.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PipelineStep {
+  final String title;
+  final String body;
+  final IconData icon;
+
+  const _PipelineStep({
+    required this.title,
+    required this.body,
+    required this.icon,
+  });
+}
+
+class _PipelineCard extends StatelessWidget {
+  final _PipelineStep step;
+
+  const _PipelineCard({
+    required this.step,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(step.icon, size: 18, color: const Color(0xFF2563EB)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  step.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  step.body,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF4B5563),
+                    height: 1.55,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusBanner extends StatelessWidget {
+  final bool ok;
+  final String title;
+  final String body;
+
+  const _StatusBanner({
+    required this.ok,
+    required this.title,
+    required this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ok ? const Color(0xFF059669) : const Color(0xFFD97706);
+    final background = ok ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(ok ? Icons.check_circle_outline : Icons.info_outline, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF374151),
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StopReasonCard extends StatelessWidget {
+  final RouteStop stop;
+
+  const _StopReasonCard({
+    required this.stop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  stop.poi.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${stop.arrivalTime}-${stop.departureTime}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${stop.poi.categoryLabel} · 停留 ${stop.stayMinutes} 分钟 · 人均约 ${stop.poi.price} 元',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            stop.reason.isEmpty ? '匹配当前偏好，并兼顾路线顺序和转场成本。' : stop.reason,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF4B5563),
+              height: 1.5,
+            ),
+          ),
+          if (stop.riskAlert != null && stop.riskAlert!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              stop.riskAlert!,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFD97706),
+              ),
+            ),
+          ],
         ],
       ),
     );

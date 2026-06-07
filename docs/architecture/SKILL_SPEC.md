@@ -272,7 +272,7 @@
 4. `poi_enrichment`
    - 把 POI 数据补全、补标签、补场景信号。
 5. `map_resolution`
-   - 对接高德等地图能力，负责地理编码、路径规划、地图预览。
+   - 对接天地图和本地兜底能力，负责地理编码、路径规划、地图预览。
 6. `route_explanation`
    - 把为什么这么选解释给用户看。
 7. `knowledge_explanation`

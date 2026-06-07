@@ -13,8 +13,8 @@
     - 地图预览
 
 地图服务提供商：
-    - 高德地图（AMap）- 当前默认
-    - 未来可扩展支持其他地图服务
+    - 天地图（Tianditu）- 当前默认
+    - 本地估算 fallback
 
 Author: MeituanAgent Team
 """
@@ -38,7 +38,7 @@ class MapStatusResponse(BaseModel):
         返回当前地图服务的配置和可用性状态
 
     字段说明：
-        - provider: 地图服务提供商（默认：高德地图）
+        - provider: 地图服务提供商（默认：天地图）
         - enabled: 服务是否启用
         - has_key: 是否已配置 API Key
         - base_url: API 基础地址
@@ -46,13 +46,14 @@ class MapStatusResponse(BaseModel):
         - note: 额外说明
     """
 
-    provider: str = "amap"  # 地图提供商
+    provider: str = "tdt"  # 地图提供商
     enabled: bool = False  # 服务是否启用
     has_key: bool = False  # 是否已配置 API Key
-    base_url: str = "https://restapi.amap.com"  # 高德地图 API 地址
+    base_url: str = "https://api.tianditu.gov.cn"  # 天地图 API 地址
     supported_modes: List[str] = Field(
         default_factory=lambda: ["walking", "driving"]
     )  # 支持的出行方式：walking=步行, driving=驾车
+    diagnostics: Dict[str, Any] = Field(default_factory=dict)  # 本进程内地图服务调用诊断
     note: Optional[str] = None  # 额外说明
 
 
@@ -184,6 +185,7 @@ class RouteInfo(BaseModel):
     distance_km: float = 0.0
     duration_min: int = 0
     steps: List[Dict[str, Any]] = Field(default_factory=list)
+    polyline: List[Dict[str, float]] = Field(default_factory=list)
 
 
 class MapApiResponse(BaseModel):
@@ -201,7 +203,7 @@ class MapApiResponse(BaseModel):
         - data: 响应数据
     """
 
-    provider: str = "amap"  # 地图提供商
+    provider: str = "tdt"  # 地图提供商
     enabled: bool = False  # 服务是否启用
     success: bool = False  # 请求是否成功
     message: Optional[str] = None  # 错误信息

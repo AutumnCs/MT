@@ -25,9 +25,19 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel as PydanticBaseModel, Field, ConfigDict
 
 from core.contracts import RouteDiagnostics
+
+
+class BaseModel(PydanticBaseModel):
+    class Config:
+        extra = "allow"
+
+    if not hasattr(PydanticBaseModel, "model_dump"):
+        def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            kwargs.pop("mode", None)
+            return self.dict(*args, **kwargs)
 
 
 # ============================================================================
@@ -134,6 +144,8 @@ class POI(BaseModel):
     description: Optional[str] = None  # 地点描述
     address: Optional[str] = None  # 地址
     business_area: Optional[str] = None  # 商圈
+    area_cluster: Optional[str] = None  # 路线片区簇，用于控制转场距离
+    area_label: Optional[str] = None  # 片区展示名
     provider: str = "manual"  # 数据来源，默认本地手工/聚合
     provider_poi_id: Optional[str] = None  # 外部平台 POI ID，如高德 POI ID
     adcode: Optional[str] = None  # 行政区编码，便于和地图平台对齐
@@ -320,7 +332,7 @@ class RouteResponse(BaseModel):
     strategy: str = "balanced"  # 策略
     generated_at: str = Field(default_factory=lambda: datetime.now().isoformat())  # 生成时间
     plans: List[RoutePlan] = Field(default_factory=list)  # 路线方案
-    intent_summary: Optional[Dict[str, Any]] = None  # 意图摘要
+    intent_summary: Optional[Any] = None  # 意图摘要
     diagnostics: Optional[RouteDiagnostics] = None  # 路线诊断信息
     clarification_needed: bool = False  # 是否需要继续澄清
     clarification_question: Optional[str] = None  # 澄清问题
@@ -329,7 +341,7 @@ class RouteResponse(BaseModel):
 
     @property
     def main_stops(self) -> List[Any]:
-        extra = getattr(self, "model_extra", None) or {}
+        extra = getattr(self, "model_extra", None) or self.__dict__
         return list(extra.get("main_stops") or extra.get("stops") or [])
 
     @property
@@ -338,7 +350,7 @@ class RouteResponse(BaseModel):
 
     @property
     def total_cost(self) -> float:
-        extra = getattr(self, "model_extra", None) or {}
+        extra = getattr(self, "model_extra", None) or self.__dict__
         stats = extra.get("stats") or {}
         if isinstance(stats, dict):
             for key in ("total_cost", "cost"):
@@ -357,7 +369,7 @@ class RouteResponse(BaseModel):
 
     @property
     def total_duration(self) -> int:
-        extra = getattr(self, "model_extra", None) or {}
+        extra = getattr(self, "model_extra", None) or self.__dict__
         stats = extra.get("stats") or {}
         if isinstance(stats, dict):
             for key in ("total_duration", "total_visit_min"):
@@ -370,7 +382,7 @@ class RouteResponse(BaseModel):
 
     @property
     def total_distance(self) -> float:
-        extra = getattr(self, "model_extra", None) or {}
+        extra = getattr(self, "model_extra", None) or self.__dict__
         stats = extra.get("stats") or {}
         if isinstance(stats, dict):
             for key in ("total_distance", "total_km"):
@@ -383,7 +395,7 @@ class RouteResponse(BaseModel):
 
     @property
     def covered_types(self) -> List[str]:
-        extra = getattr(self, "model_extra", None) or {}
+        extra = getattr(self, "model_extra", None) or self.__dict__
         value = extra.get("covered_types")
         if isinstance(value, list):
             return [str(item) for item in value if item]
@@ -468,8 +480,20 @@ class ParsedIntent(BaseModel):
     parse_source: str = "local"
     current_route: Optional[Any] = None
 
-    def model_post_init(self, __context: Any) -> None:
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
+        self._sync_derived_fields()
+
+    def _sync_derived_fields(self) -> None:
         """Keep legacy boolean flags in sync with the list-based schema."""
+        def _normalize_avoid_key(value: str) -> str:
+            mapping = {
+                "spicy": "avoid_spicy",
+                "far": "avoid_far",
+                "queue": "avoid_queue",
+                "crowded": "avoid_crowded",
+            }
+            return mapping.get(value, value)
 
         preference_flags = {
             "couple": "prefer_couple",
@@ -497,6 +521,8 @@ class ParsedIntent(BaseModel):
             "avoid_queue": "avoid_queue",
             "avoid_crowded": "avoid_crowded",
         }
+
+        self.avoid = list(dict.fromkeys(_normalize_avoid_key(item) for item in self.avoid))
 
         for key, field_name in preference_flags.items():
             if key in self.preferences:
@@ -535,6 +561,9 @@ class ParsedIntent(BaseModel):
             if self.start_location:
                 constraints.append(f"start_location:{self.start_location}")
             self.hard_constraints = constraints
+
+    def model_post_init(self, __context: Any) -> None:
+        self._sync_derived_fields()
 
     @property
     def available_time(self) -> int:
