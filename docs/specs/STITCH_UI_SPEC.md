@@ -1,4 +1,4 @@
-# MeituanAgent UI Spec for Stitch
+# Muse - 现在就出发 UI Spec for Stitch
 
 This document describes the frontend experience in product terms so Stitch can design the UI system and page layouts.
 

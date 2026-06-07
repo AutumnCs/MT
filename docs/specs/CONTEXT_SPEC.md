@@ -1,6 +1,6 @@
 # Context Spec
 
-This spec defines the lightweight context and profile system for MeituanAgent.
+This spec defines the lightweight context and profile system for Muse - 现在就出发.
 The goal is to make multi-turn route planning, user profiling, and route replay
 maintainable without adding a heavy agent framework.
 

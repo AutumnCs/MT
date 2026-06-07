@@ -1,6 +1,6 @@
 # Skill Governance Spec
 
-这份文档定义的不是“Codex skill”，而是 `MeituanAgent` 里的**能力治理规范**。
+这份文档定义的不是“Codex skill”，而是 `Muse - 现在就出发` 里的**能力治理规范**。
 
 目标很简单：
 
@@ -261,7 +261,7 @@
 
 ## 10. 本项目建议的 skill 列表
 
-如果把 `MeituanAgent` 当成一个可持续演进的产品，建议把能力拆成这些 skill：
+如果把 `Muse - 现在就出发` 当成一个可持续演进的产品，建议把能力拆成这些 skill：
 
 1. `intent_parsing`
    - 把自然语言稳定归一成结构化意图。
