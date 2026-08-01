@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field
 
@@ -114,4 +115,49 @@ class ContextSnapshot(BaseModel):
     profile: UserProfile
     recent_events: list[BehaviorEvent] = Field(default_factory=list)
     route_versions: list[RouteVersionRecord] = Field(default_factory=list)
+
+
+class WorkflowStageSnapshot(BaseModel):
+    """One stage in the route workflow trace."""
+
+    model_config = ConfigDict(extra="allow")
+
+    stage: str
+    status: str = "done"
+    summary: Optional[str] = None
+    checks: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    output: dict[str, Any] = Field(default_factory=dict)
+
+
+class RouteWorkflowTrace(BaseModel):
+    """Unified end-to-end trace for one route request."""
+
+    model_config = ConfigDict(extra="allow")
+
+    trace_id: str = Field(default_factory=lambda: uuid4().hex)
+    session_id: Optional[str] = None
+    created_at: str = Field(default_factory=_now)
+    task_hint: Optional[str] = None
+    query: Optional[str] = None
+    city: Optional[str] = None
+    parse_source: Optional[str] = None
+    intent_confidence: Optional[float] = None
+    decision: str = "accept"
+    selected_variant_name: Optional[str] = None
+    selected_variant_source: Optional[str] = None
+    alignment_score: float = 0.0
+    should_replan: bool = False
+    stages: list[WorkflowStageSnapshot] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    checks: list[str] = Field(default_factory=list)
+    route_quality: dict[str, Any] = Field(default_factory=dict)
+    route_critique: dict[str, Any] = Field(default_factory=dict)
+    workflow_guard: dict[str, Any] = Field(default_factory=dict)
+    coordinator: dict[str, Any] = Field(default_factory=dict)
+    execution_plan: dict[str, Any] = Field(default_factory=dict)
+    tool_results: list[dict[str, Any]] = Field(default_factory=list)
+    feedback_targets: list[str] = Field(default_factory=lambda: ["session", "profile", "route_history"])
 

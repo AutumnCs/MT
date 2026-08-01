@@ -1,18 +1,12 @@
 # Quickstart
 
-这是当前项目的最短启动路径。
+这是当前项目的最短启动流程。
 
-## 1. 安装后端依赖
+## 1. 启动后端
 
 ```powershell
 cd G:\MeituanAgent\backend
 python -m pip install -r requirements.txt
-```
-
-## 2. 启动后端
-
-```powershell
-cd G:\MeituanAgent\backend
 python main.py
 ```
 
@@ -22,45 +16,73 @@ python main.py
 http://127.0.0.1:8000
 ```
 
-## 3. 启动前端
+## 2. 启动前端
 
 ```powershell
 cd G:\MeituanAgent
-flutter pub get
+.\flutter.ps1 pub get
 .\flutter.ps1 run -d windows
 ```
 
-## 4. 可选地图配置
-
-后端天地图 key：
+如果遇到旧的 `build` 路径缓存：
 
 ```powershell
-$env:TDT_SERVER_KEY="你的天地图服务端Key"
+cd G:\MeituanAgent
+Remove-Item -Recurse -Force .\build, .\.dart_tool -ErrorAction SilentlyContinue
+.\flutter.ps1 pub get
 ```
 
-前端 WebView token：
+## 3. 可选地图配置
+
+需要地图面板时：
 
 ```powershell
-.\flutter.ps1 run -d windows --dart-define=TDT_WEB_KEY=你的天地图浏览器端Token
+cd G:\MeituanAgent
+.\flutter.ps1 run -d windows --dart-define=SHOW_ROUTE_MAP_PANEL=true
 ```
 
-不配置地图 key 时，系统使用本地地图预览兜底。
+如需传入天地图浏览器端 token：
 
-## 5. 跑离线评测
+```powershell
+cd G:\MeituanAgent
+.\flutter.ps1 run -d windows --dart-define=SHOW_ROUTE_MAP_PANEL=true --dart-define=TDT_WEB_KEY=你的Token
+```
+
+## 4. 可选 LLM 配置
+
+```powershell
+$env:DASHSCOPE_API_KEY="你的DashScope Key"
+$env:DASHSCOPE_MODEL="qwen-turbo"
+```
+
+如果你想强制走 LLM：
+
+```powershell
+$env:LLM_INTENT_FORCE="1"
+```
+
+## 5. 离线评测
 
 ```powershell
 cd G:\MeituanAgent\backend
 python -m eval.eval_runner
 ```
 
-## 6. 常见问题入口
+## 6. 可选外部语义模型
 
-- 意图解析：`backend/core/intent_parser.py`
-- POI 召回：`backend/services/poi_retriever.py`
-- POI 排序：`backend/services/ranker_engine.py`
-- 路线规划：`backend/services/route_planner.py`
-- 响应解释：`backend/services/response_generator.py`
-- 地图预览：`backend/services/map_service.py`
-- 前端首页：`lib/main.dart`
-- 结果页：`lib/pages/route_result_page.dart`
+默认检索和精排会使用本地轻量后端。
 
+如果你想切到真实 embedding / rerank 模型：
+
+```powershell
+cd G:\MeituanAgent\backend
+python -m pip install sentence-transformers
+python -m pip install faiss-cpu
+$env:ROUTE_DENSE_MODEL_BACKEND="sentence_transformers"
+$env:ROUTE_DENSE_MODEL="BAAI/bge-m3"
+$env:ROUTE_RERANK_MODEL_BACKEND="sentence_transformers"
+$env:ROUTE_RERANK_MODEL="BAAI/bge-reranker-v2-m3"
+python main.py
+```
+
+如果这些依赖或模型不可用，系统会自动回退到本地轻量语义后端。

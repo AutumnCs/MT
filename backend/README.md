@@ -1,54 +1,161 @@
 # Backend Overview
 
-`backend/` 是 MeituanAgent 的路线规划引擎，负责自然语言意图解析、POI 召回、POI 排序、路线组合、响应解释、上下文记录和地图预览。
+`backend/` is the FastAPI route-planning backend for MeituanAgent. Its job is to
+turn natural-language travel intent into executable, explainable, and editable
+city routes.
 
-## 当前执行路径
+## Current Shape
 
-1. `route_service.py` 接收路线生成或修改请求。
-2. `llm_intent_client.py` 优先调用 LLM 解析意图。
-3. `intent_parser.py` 对 LLM 结果做本地归一化，并合并词典/规则信号。
-4. `route_service.py` 判断是否需要一轮澄清。
-5. `constraint_checker.py` 校验意图和候选 POI。
-6. `poi_retriever.py` 从 `pois.json` 召回候选。
-7. `ranker_engine.py` 计算多因子排序分和推荐理由。
-8. `route_planner.py` 通过 Beam Search 与启发式补全生成主路线和备选方案。
-9. `response_generator.py` 生成前端可展示的路线、解释、风险提示和 trace。
-10. `context_service.py` 记录会话事件、路线版本和轻量画像。
-11. `map_service.py` 生成天地图/本地兜底路线预览。
+The backend is not a free-form travel agent. It is a controlled route-planning
+pipeline with explicit orchestration and a bounded execution DAG:
 
-## 目录说明
-
-- `core/`：请求/响应契约、意图解析、schema、能力注册、上下文模型、提示模板。
-- `services/`：路线生成主逻辑，包括召回、排序、规划、解释、地图、上下文。
-- `policy/`：排序权重和策略配置。
-- `lexicon/`：结构化语义词典和展示标签。
-- `eval/`：离线回归和质量检查。
-- `tools/`：POI 同步、扩充、维护脚本。
-
-## 当前口径
-
-- 主路径是 LLM-first。
-- 本地规则用于归一化、兜底、评测和稳定约束。
-- POI 排序真实实现是 `services/ranker_engine.py`，`services/poi_ranker.py` 是兼容入口。
-- 地图主路径是天地图封装，本地经纬度估算兜底。
-- 高德相关代码作为 POI 数据维护辅助，不是当前主地图服务路径。
-- 画像只作为软偏置，不覆盖本轮明确需求。
-- `context_service.py` 不应阻塞路线生成。
-
-## 运行
-
-```powershell
-cd G:\MeituanAgent\backend
-python -m pip install -r requirements.txt
-python main.py
+```text
+Intent parsing
+  -> RouteCoordinator
+  -> ExecutionPlan / DAG
+  -> memory/context tool when available
+  -> POI retrieval / ranking
+  -> route planning
+  -> optional route tools through Tool Layer
+  -> validation and workflow guard
+  -> patch-based repair if useful
+  -> explanation and response trace
 ```
 
-## 评测
+LLM parsing is used for language understanding when available. Route decisions,
+constraints, repair, and final response structure stay in deterministic backend
+services.
+
+## Intent Recognition
+
+The current intent layer is not a retrieval-style RAG module. It is a bounded
+parse cascade:
+
+```text
+user query
+  -> local rule/semantic parse
+  -> fast-gate confidence check
+  -> LLM parse when needed
+  -> local normalization + semantic score merge
+  -> clarification / guard checks
+```
+
+In practice:
+
+- local parsing handles lexicon matches, time/budget extraction, and lightweight semantic hints
+- simple high-confidence requests can stop at `local_fast_gate`
+- ambiguous or compositional requests go through `llm+local`
+- if LLM parsing fails, the backend falls back to `local_fallback`
+- semantic understanding now reads a unified ontology layer so prompts, hint inference, and recall expansion share the same canonical tags
+- route modification now inherits the original intent goal before inheriting route coverage, which keeps additive requests like breakfast/coffee from bloating the route
+
+The output is always normalized into the same `ParsedIntent` schema, including
+categories, preferences, avoid flags, uncertainty fields, semantic scores, hard
+constraints, and confidence.
+
+For the fuller design note, see `docs/specs/INTENT_UNDERSTANDING_SPEC.md`.
+The runtime trace now also includes an execution-oriented `IntentIR` view so
+language understanding and downstream execution do not have to share one flat
+schema.
+
+## Key Modules
+
+- `agent/`: coordinator state, execution plan, tool result contracts, and patch-based intent repair.
+- `core/`: shared schemas, intent parser, prompt templates, capability registry, and diagnostics contracts.
+- `services/`: POI retrieval, ranking, route planning, validation, response generation, context, maps, and route tools.
+- `eval/`: offline regression runner and evaluation cases.
+- `policy/`: configurable route and ranking policy. See `ROUTE_POLICY_GUIDE.md` for tuning notes.
+- `tools/`: data maintenance scripts.
+
+## Workflow Trace
+
+Every route response can include `workflow_trace` and `trace` data. The current
+trace records:
+
+- input and intent understanding
+- intent trace with parse path, confidence, uncertainty, semantic top scores, and memory/profile bias usage
+- `execution_plan`
+- memory projection summary such as stable/recent signal counts, decay, route-memory strength, and pending conflicts
+- retrieval counts and selected POIs
+- planning-time local distance matrix summary
+- route attempt summaries for initial/repair runs and adoption decisions
+- tool observations such as `poi_recall`, `constraint_filter`, `poi_rerank`, `map_distance_matrix`, `memory_context`, `heat_signal`, and `ugc_signal`
+- planning result and route stats
+- route critique and guardrail checks
+- coordinator decisions
+- explanation summary
+
+This trace is meant for debugging, evals, and future workflow UI. User-facing
+copy should stay concise.
+
+## Tool Layer
+
+Tools are bounded and auditable. A tool returns a normalized `ToolResult` with
+status, confidence, payload, evidence, noise risk, latency, and fallback state.
+
+The coordinator now emits a lightweight execution DAG inside `execution_plan`:
+
+- deterministic steps such as `intent`, `poi_retrieval`, `ranking`, `planning`, `validation`, `explanation`
+- tool nodes such as `tool:memory_context`, `tool:map_distance_matrix`, `tool:ugc_signal`, `tool:heat_signal`
+- explicit dependencies and per-node runtime status for trace/debug use
+
+This is intentionally not a free-form agent loop. Replanning still happens only
+at bounded coordinator checkpoints.
+
+Current implemented route/tool observations:
+
+- `poi_recall`: reports recall lanes, raw/selected candidate counts, retrieval backend metadata, and fallback state.
+- `poi_rerank`: reports rerank input/output counts, top-score span, average score breakdown, and top recommendation reasons.
+  The breakdown now includes query-alignment so ranking can better reflect the
+  original user request without relying on a heavyweight external reranker.
+- `constraint_filter`: reports constraint filtering pressure before ranking.
+- `memory_context`: summarizes usable session/profile signals when a session exists and the user has not opted out.
+  It now exposes a compact raw/structured/semantic projection, conflict count,
+  freshness metadata, and a bounded prompt block for LLM-side understanding.
+- `planning_distance_matrix`: summarizes the bounded top-K local matrix used by route scoring and scheduling.
+- `map_distance_matrix`: calibrates consecutive route segment travel time and distance; falls back to local haversine estimates when external maps are not enabled.
+- `heat_signal`: checks selected route POIs for queue and crowd pressure when the request is sensitive to waiting or congestion.
+- `ugc_signal`: extracts compact selected-route review signals such as queue/crowd/quiet/photo/food fit without passing raw reviews through planning. The route layer now keeps structured summaries and short explanation hints separate from raw per-stop debug payloads.
+
+Future data tools should follow the same contract:
+
+- `PoiRecallTool`
+- `WeatherTool`
+
+## Repair
+
+Intent repair is patch-based through `IntentRepairAgent`. It can only adjust
+allowed soft planning fields such as categories, preferences, avoid flags, and
+route strategy. It must not rewrite city, budget, time windows, or hard
+constraints that were not in the user request.
+
+## Evaluation
+
+Run the offline regression suite after backend changes:
 
 ```powershell
 cd G:\MeituanAgent\backend
 python -m eval.eval_runner
 ```
 
-当前离线评测集为 `eval_cases.json`，最近一次本地运行 25/25 通过。
+Current suite: 49 cases, covering intent parsing, route modification, workflow
+trace, memory opt-out/session behavior, route version persistence, route
+delta summaries, session route autofill, route quality, heat/queue tooling,
+failure boundaries, intent repair, and acceptance checks for sub-10-second
+planning, at least three POIs, dining plus culture/entertainment coverage, and
+complete stop timing.
 
+## Retrieval Architecture
+
+POI retrieval now uses a lightweight hybrid stack:
+
+- rule/category lanes
+- direct text-signal lane
+- BM25 lexical lane
+- dense hash-vector lane
+- optional FAISS acceleration when installed
+
+This keeps the default project dependency-light while making the retrieval
+boundary ready for stronger dense models later. If we adopt `bge-m3`,
+`bge-reranker-v2-m3`, or Milvus/Faiss in a larger deployment, the main route
+workflow does not need to be rewritten.

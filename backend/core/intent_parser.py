@@ -31,6 +31,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from core.intent_lexicon import INTENT_LEXICON, prompt_lexicon_excerpt
+from core.semantic_intent import apply_semantic_hints
 from core.schemas import ParsedIntent
 
 
@@ -76,6 +77,7 @@ _PREFERENCE_FALLBACK_KEYWORDS = {
     "prefer_friends": ["朋友", "闺蜜", "同学", "聚会", "朋友局"],
     "prefer_solo": ["一个人", "独自", "solo", "独行"],
     "prefer_value": ["性价比", "划算", "实惠", "便宜", "预算友好", "省钱"],
+    "prefer_premium": ["顶奢", "高端", "精致", "贵一点", "吃好点", "品质感", "仪式感", "不要便宜路线", "不要太便宜"],
     "prefer_indoor": ["室内", "室内优先", "避雨", "不淋雨", "馆内", "店内"],
     "prefer_outdoor": ["室外", "户外", "露天", "外面", "室外优先"],
     "prefer_shopping": ["购物", "商场", "逛商场", "商圈", "逛小店", "小店"],
@@ -128,6 +130,207 @@ def _keywords_with_fallback(lexicon_key: str, fallback_map: dict[str, list[str]]
     if keywords:
         return keywords
     return list(fallback_map.get(lexicon_key, []))
+
+
+_NEGATION_PREFIXES = ("不要", "别", "不想", "不太想", "不用", "无需", "不需要", "拒绝")
+
+
+def _is_negated_keyword(query: str, keyword: str, window_size: int = 6) -> bool:
+    """Return whether a matched keyword is locally negated in the user query."""
+
+    if not query or not keyword:
+        return False
+    start = query.find(keyword)
+    while start >= 0:
+        prefix = query[max(0, start - window_size) : start]
+        if any(marker in prefix for marker in _NEGATION_PREFIXES):
+            return True
+        start = query.find(keyword, start + len(keyword))
+    return False
+
+
+def _has_positive_keyword(query: str, keyword: str) -> bool:
+    return keyword in query and not _is_negated_keyword(query, keyword)
+
+
+def _rejects_value_route(query: str) -> bool:
+    normalized = (query or "").replace(" ", "")
+    markers = (
+        "不要便宜",
+        "别便宜",
+        "不想便宜",
+        "不要太便宜",
+        "不要给我太便宜",
+        "不要便宜路线",
+        "别给我便宜",
+        "不走便宜",
+        "不要省钱",
+        "不省钱",
+    )
+    return any(marker in normalized for marker in markers)
+
+
+_SCORE_CATEGORY_TAGS = {
+    "food",
+    "coffee",
+    "library",
+    "exhibition",
+    "museum",
+    "night",
+    "street",
+    "park",
+    "shopping",
+    "scene",
+}
+_SCORE_PREFERENCE_TAGS = {
+    "couple",
+    "photo",
+    "food",
+    "culture",
+    "local_feature",
+    "night_view",
+    "quiet",
+    "rainy_day",
+    "walking",
+    "family",
+    "friends",
+    "solo",
+    "value",
+    "premium",
+    "indoor",
+    "outdoor",
+    "shopping",
+    "citywalk",
+    "efficient",
+    "compact",
+    "relaxed",
+}
+_SCORE_AVOID_TAGS = {"avoid_spicy", "avoid_far", "avoid_queue", "avoid_crowded"}
+
+
+def _normalize_score_tag(raw_key: str) -> str:
+    key = str(raw_key or "").strip()
+    if not key:
+        return ""
+    mapped = _PREFERENCE_LABEL_TO_KEY.get(key, key)
+    mapped = _normalize_avoid_key(mapped)
+    if mapped.startswith("prefer_"):
+        mapped = mapped.removeprefix("prefer_")
+    if mapped.startswith("category_"):
+        mapped = mapped.removeprefix("category_")
+    return mapped
+
+
+def _coerce_semantic_scores(raw_scores: Any) -> dict[str, float]:
+    if not isinstance(raw_scores, dict):
+        return {}
+    scores: dict[str, float] = {}
+    for raw_key, raw_value in raw_scores.items():
+        key = _normalize_score_tag(str(raw_key))
+        if key not in _SCORE_CATEGORY_TAGS and key not in _SCORE_PREFERENCE_TAGS and key not in _SCORE_AVOID_TAGS:
+            continue
+        try:
+            score = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if score > 1.0 and score <= 100.0:
+            score = score / 100.0
+        scores[key] = max(0.0, min(1.0, score))
+    return scores
+
+
+def _coerce_semantic_evidence(raw_evidence: Any) -> dict[str, str]:
+    if not isinstance(raw_evidence, dict):
+        return {}
+    evidence: dict[str, str] = {}
+    for raw_key, raw_value in raw_evidence.items():
+        key = _normalize_score_tag(str(raw_key))
+        if not key:
+            continue
+        text = str(raw_value or "").strip()
+        if text:
+            evidence[key] = text[:80]
+    return evidence
+
+
+def _apply_semantic_scores_to_fields(
+    *,
+    categories: list[str],
+    preferences: list[str],
+    avoid: list[str],
+    scores: dict[str, float],
+    query: str,
+) -> tuple[list[str], list[str], list[str]]:
+    if not scores:
+        return categories, preferences, avoid
+
+    for tag, score in scores.items():
+        if tag in _SCORE_CATEGORY_TAGS and score >= 0.75 and tag not in categories:
+            categories.append(tag)
+        if tag in _SCORE_PREFERENCE_TAGS and score >= 0.65 and tag not in preferences:
+            preferences.append(tag)
+        if tag in _SCORE_AVOID_TAGS and score >= 0.70 and tag not in avoid:
+            avoid.append(tag)
+
+    premium_score = scores.get("premium", 0.0)
+    value_score = scores.get("value", 0.0)
+    if _rejects_value_route(query) or (premium_score >= 0.70 and value_score < 0.62):
+        preferences = [item for item in preferences if item != "value"]
+
+    return list(dict.fromkeys(categories)), list(dict.fromkeys(preferences)), list(dict.fromkeys(avoid))
+
+
+def _derive_party_types(preferences: list[str]) -> list[str]:
+    return [item for item in ("couple", "family", "friends", "solo") if item in (preferences or [])]
+
+
+def _extract_quantity_constraints(query: str) -> tuple[dict[str, int], dict[str, int]]:
+    """Extract light quantity constraints from user wording."""
+
+    text = (query or "").strip()
+    if not text:
+        return {}, {}
+
+    min_counts: dict[str, int] = {}
+    max_counts: dict[str, int] = {}
+
+    scene_min_tokens = (
+        "多看几个景点",
+        "多看点景点",
+        "多看些景点",
+        "几个景点",
+        "多逛几个景点",
+        "多去几个景点",
+        "多看几个地点",
+    )
+    if any(token in text for token in scene_min_tokens):
+        min_counts["scene"] = max(min_counts.get("scene", 0), 2)
+
+    food_min_tokens = (
+        "顺便喝个早茶",
+        "顺便喝早茶",
+        "加个早茶",
+        "喝个早茶",
+        "去吃个早茶",
+        "带个早茶",
+    )
+    if any(token in text for token in food_min_tokens):
+        min_counts["food"] = max(min_counts.get("food", 0), 1)
+
+    food_cap_tokens = (
+        "别安排太多饭店",
+        "不要太多饭店",
+        "少安排饭店",
+        "别太多饭店",
+        "少安排餐饮",
+        "别安排太多餐厅",
+        "别太多餐厅",
+        "少点饭店",
+    )
+    if any(token in text for token in food_cap_tokens):
+        max_counts["food"] = 1
+
+    return min_counts, max_counts
 
 
 def _extract_unclassified_clues(query: str, known_terms: list[str]) -> list[str]:
@@ -225,13 +428,15 @@ class IntentParser:
         if start_location:
             must_include = [item for item in must_include if item not in start_location and start_location not in item]
 
+        category_min_counts, category_caps = _extract_quantity_constraints(query)
+
         # 11. 保留未能稳定归类的线索，方便后续扩词典与回归
         unclassified_clues = _extract_unclassified_clues(
             query,
             [*categories, *preferences, *avoid, *must_include, city or "", start_location or ""],
         )
 
-        return ParsedIntent(
+        intent = ParsedIntent(
             city=city,
             start_location=start_location,
             start_time=start_time,
@@ -239,13 +444,19 @@ class IntentParser:
             budget=budget,
             required_categories=categories,
             preferences=preferences,
+            party_types=_derive_party_types(preferences),
+            primary_party_type=_derive_party_types(preferences)[0] if _derive_party_types(preferences) else None,
             avoid=avoid,
             pace=pace,
             transport_mode=transport_mode,
             must_include=must_include,
+            category_min_counts=category_min_counts,
+            category_caps=category_caps,
             unclassified_clues=unclassified_clues,
             notes=None,
         )
+        apply_semantic_hints(intent, query)
+        return intent
 
     def _parse_city(
         self,
@@ -513,6 +724,7 @@ class IntentParser:
             "prefer_friends": "friends",
             "prefer_solo": "solo",
             "prefer_value": "value",
+            "prefer_premium": "premium",
             "prefer_indoor": "indoor",
             "prefer_outdoor": "outdoor",
             "prefer_shopping": "shopping",
@@ -524,10 +736,14 @@ class IntentParser:
         for lexicon_key, preference in preference_map.items():
             keywords = _keywords_with_fallback(lexicon_key, _PREFERENCE_FALLBACK_KEYWORDS)
             for keyword in keywords:
-                if keyword in query:
+                matched = _has_positive_keyword(query, keyword) if preference == "value" else keyword in query
+                if matched:
                     if preference not in preferences:
                         preferences.append(preference)
                     break
+
+        if _rejects_value_route(query):
+            preferences = [item for item in preferences if item != "value"]
 
         return preferences
 
@@ -635,6 +851,9 @@ _PREFERENCE_LABEL_TO_KEY: Dict[str, str] = {
     "不想排队": "avoid_queue",
     "不要排队": "avoid_queue",
     "性价比": "value",
+    "高端": "premium",
+    "高端精致": "premium",
+    "顶奢": "premium",
     "轻松路线": "relaxed",
     "轻松": "relaxed",
     "美食": "food",
@@ -692,6 +911,7 @@ def refresh_intent_derived_fields(intent: ParsedIntent) -> ParsedIntent:
         "friends": "prefer_friends",
         "solo": "prefer_solo",
         "value": "prefer_value",
+        "premium": "prefer_premium",
         "indoor": "prefer_indoor",
         "outdoor": "prefer_outdoor",
         "citywalk": "prefer_citywalk",
@@ -718,12 +938,18 @@ def refresh_intent_derived_fields(intent: ParsedIntent) -> ParsedIntent:
             if key in [_normalize_avoid_key(item) for item in getattr(intent, "avoid", [])]:
                 setattr(intent, field_name, True)
 
+    party_types = _derive_party_types(list(getattr(intent, "preferences", []) or []))
+    existing_party_types = [str(item) for item in getattr(intent, "party_types", []) or [] if item]
+    intent.party_types = list(dict.fromkeys([*existing_party_types, *party_types]))
+    if intent.party_types:
+        intent.primary_party_type = str(getattr(intent, "primary_party_type", None) or intent.party_types[0])
+    else:
+        intent.primary_party_type = None
+
     category_from_preferences = {
         "food": "food",
         "coffee": "coffee",
         "culture": "exhibition",
-        "rainy_day": "exhibition",
-        "indoor": "exhibition",
         "night_view": "night",
         "citywalk": "street",
         "walking": "street",
@@ -745,14 +971,22 @@ def refresh_intent_derived_fields(intent: ParsedIntent) -> ParsedIntent:
     )
     intent.preferred_categories = list(
         dict.fromkeys(
-            [*(getattr(intent, "preferred_categories", []) or []), *(getattr(intent, "required_categories", []) or [])]
+            [
+                *(getattr(intent, "preferred_categories", []) or []),
+                *(getattr(intent, "primary_categories", []) or []),
+                *(getattr(intent, "secondary_categories", []) or []),
+                *(getattr(intent, "required_categories", []) or []),
+            ]
         )
     )
     intent.intent_tags = list(
         dict.fromkeys(
             [
+                *(getattr(intent, "primary_categories", []) or []),
+                *(getattr(intent, "secondary_categories", []) or []),
                 *(getattr(intent, "required_categories", []) or []),
                 *(getattr(intent, "preferences", []) or []),
+                *(getattr(intent, "party_types", []) or []),
                 *(getattr(intent, "avoid", []) or []),
                 *(getattr(intent, "must_include", []) or []),
             ]
@@ -800,6 +1034,16 @@ def apply_ui_preferences(intent: ParsedIntent, preferences: List[str]) -> Parsed
 
     intent.preferences = pref_keys
     intent.avoid = avoid_keys
+    quantity_min_counts, quantity_caps = _extract_quantity_constraints(text)
+    for category, minimum in quantity_min_counts.items():
+        intent.category_min_counts[category] = max(int(intent.category_min_counts.get(category, 0) or 0), minimum)
+    for category, maximum in quantity_caps.items():
+        current = intent.category_caps.get(category)
+        if current is None:
+            intent.category_caps[category] = maximum
+        else:
+            intent.category_caps[category] = min(int(current or maximum), maximum)
+
     return refresh_intent_derived_fields(intent)
 
 
@@ -837,7 +1081,7 @@ def apply_modification_hints(
 
     if any(token in text for token in ("太远", "别太远", "近一点", "更近")):
         add_avoid("avoid_far")
-    if any(token in text for token in ("不想排队", "不要排队", "少排队", "排队太久")):
+    if any(token in text for token in ("不想排队", "不要排队", "别排队", "少排队", "不排队", "排队太久", "别排太久", "不想排太久", "少排太久")):
         add_avoid("avoid_queue")
     if any(token in text for token in ("人多", "拥挤", "别太挤", "避开人多")):
         add_avoid("avoid_crowded")
@@ -850,8 +1094,11 @@ def apply_modification_hints(
         add_pref("efficient")
     if any(token in text for token in ("拍照", "出片", "打卡", "好看")):
         add_pref("photo")
-    if any(token in text for token in ("美食", "吃饭", "吃点好的", "吃点东西", "吃点", "好吃", "小吃", "本地小吃", "本帮菜", "粤式点心", "正餐", "简餐")):
+    if any(token in text for token in ("美食", "吃饭", "吃点好的", "吃点东西", "吃点", "好吃", "小吃", "本地小吃", "本帮菜", "粤式点心", "早茶", "饮茶", "点心", "正餐", "简餐")):
         add_pref("food")
+    if any(token in text for token in ("顶奢", "高端", "精致", "贵一点", "吃好点", "品质感", "仪式感", "不要便宜", "不要太便宜")):
+        add_pref("premium")
+        pref_keys[:] = [item for item in pref_keys if item != "value"]
     if any(token in text for token in ("文艺", "展览", "看展", "博物馆")):
         add_pref("culture")
     if any(token in text for token in ("咖啡", "咖啡店", "喝杯咖啡", "下午茶")):
@@ -867,6 +1114,8 @@ def apply_modification_hints(
         add_category("museum")
     if any(token in text for token in ("咖啡", "咖啡店", "喝杯咖啡", "下午茶")):
         add_category("coffee")
+    if any(token in text for token in ("早茶", "饮茶", "点心", "粤式点心")):
+        add_category("food")
     if any(token in text for token in ("逛逛", "随便逛逛", "citywalk", "城市漫步", "老街", "小店", "玩", "游玩", "逛玩")):
         add_category("street")
     if any(token in text for token in ("大学城", "广州大学城", "小洲村", "岭南印象园", "广东科学中心")):
@@ -889,6 +1138,9 @@ def apply_modification_hints(
     if any(token in text for token in ("citywalk", "散步", "逛逛", "溜达")):
         add_pref("citywalk")
         add_pref("walking")
+
+    if _rejects_value_route(text):
+        pref_keys = [item for item in pref_keys if item != "value"]
 
     intent.preferences = list(dict.fromkeys(pref_keys))
     intent.avoid = list(dict.fromkeys(_normalize_avoid_key(item) for item in avoid_keys))
@@ -971,6 +1223,8 @@ def normalize_llm_intent(
     else:
         preferences = []
     preferences = list(dict.fromkeys([*preferences, *local_intent.preferences]))
+    if _rejects_value_route(query or ""):
+        preferences = [item for item in preferences if item != "value"]
 
     # 归一化避雷
     avoid = draft.get("avoid") or []
@@ -988,6 +1242,56 @@ def normalize_llm_intent(
         categories = []
     categories = list(dict.fromkeys([*categories, *local_intent.required_categories]))
 
+    primary_categories = draft.get("primary_categories") or []
+    if isinstance(primary_categories, list):
+        primary_categories = [str(c).strip() for c in primary_categories if c]
+    else:
+        primary_categories = []
+
+    secondary_categories = draft.get("secondary_categories") or []
+    if isinstance(secondary_categories, list):
+        secondary_categories = [str(c).strip() for c in secondary_categories if c]
+    else:
+        secondary_categories = []
+
+    goal_summary = draft.get("goal_summary")
+    if goal_summary is not None:
+        goal_summary = str(goal_summary).strip() or None
+
+    uncertain_fields = draft.get("uncertain_fields") or []
+    if isinstance(uncertain_fields, list):
+        uncertain_fields = [str(item).strip() for item in uncertain_fields if item]
+    else:
+        uncertain_fields = []
+
+    needs_clarification = draft.get("needs_clarification")
+    if isinstance(needs_clarification, str):
+        needs_clarification = needs_clarification.strip().lower() in {"1", "true", "yes", "y", "on"}
+    elif needs_clarification is None:
+        needs_clarification = False
+    else:
+        needs_clarification = bool(needs_clarification)
+
+    preferred_categories = list(dict.fromkeys([*categories, *primary_categories, *secondary_categories, *local_intent.preferred_categories]))
+
+    semantic_scores = _coerce_semantic_scores(draft.get("semantic_scores"))
+    semantic_evidence = _coerce_semantic_evidence(draft.get("semantic_evidence"))
+    categories, preferences, avoid = _apply_semantic_scores_to_fields(
+        categories=categories,
+        preferences=preferences,
+        avoid=avoid,
+        scores=semantic_scores,
+        query=query or "",
+    )
+
+    intent_confidence = draft.get("intent_confidence")
+    try:
+        intent_confidence = float(intent_confidence) if intent_confidence is not None else None
+        if intent_confidence is not None:
+            intent_confidence = max(0.0, min(1.0, intent_confidence / 100.0 if intent_confidence > 1.0 else intent_confidence))
+    except (TypeError, ValueError):
+        intent_confidence = None
+
     # 归一化节奏
     pace = draft.get("pace") or local_intent.pace or "normal"
     if pace not in ["fast", "normal", "slow"]:
@@ -997,6 +1301,33 @@ def normalize_llm_intent(
     transport = draft.get("transport_mode") or local_intent.transport_mode or "mixed"
     if transport not in ["walking", "metro", "taxi", "mixed"]:
         transport = local_intent.transport_mode if local_intent.transport_mode in ["walking", "metro", "taxi", "mixed"] else "mixed"
+
+    category_min_counts = dict(getattr(local_intent, "category_min_counts", {}) or {})
+    draft_category_min_counts = draft.get("category_min_counts") or {}
+    if isinstance(draft_category_min_counts, dict):
+        for key, value in draft_category_min_counts.items():
+            try:
+                category_min_counts[str(key)] = max(int(category_min_counts.get(str(key), 0) or 0), int(value))
+            except (TypeError, ValueError):
+                continue
+
+    category_caps = dict(getattr(local_intent, "category_caps", {}) or {})
+    draft_category_caps = draft.get("category_caps") or {}
+    if isinstance(draft_category_caps, dict):
+        for key, value in draft_category_caps.items():
+            try:
+                value_int = int(value)
+            except (TypeError, ValueError):
+                continue
+            key = str(key)
+            current = category_caps.get(key)
+            if current is None:
+                category_caps[key] = value_int
+            else:
+                try:
+                    category_caps[key] = min(int(current), value_int)
+                except (TypeError, ValueError):
+                    category_caps[key] = value_int
 
     must_include = draft.get("must_include") or []
     if not isinstance(must_include, list):
@@ -1017,20 +1348,35 @@ def normalize_llm_intent(
     )
     unclassified_clues = list(dict.fromkeys([*draft_unclassified, *auto_unclassified]))
 
-    return ParsedIntent(
+    parsed_intent = ParsedIntent(
         city=city,
         start_location=draft.get("start_location") or local_intent.start_location,
         start_time=draft.get("start_time") or local_intent.start_time,
         end_time=draft.get("end_time") or local_intent.end_time,
         budget=budget if budget is not None else local_intent.budget,
         required_categories=categories,
+        preferred_categories=preferred_categories,
+        primary_categories=primary_categories,
+        secondary_categories=secondary_categories,
         preferences=preferences,
+        party_types=list(dict.fromkeys([*(draft.get("party_types") or []), *_derive_party_types(preferences), *(getattr(local_intent, "party_types", []) or [])])),
+        primary_party_type=draft.get("primary_party_type") or getattr(local_intent, "primary_party_type", None),
         avoid=avoid,
         pace=pace,
         transport_mode=transport,
         must_include=must_include,
+        category_min_counts=category_min_counts,
+        category_caps=category_caps,
+        goal_summary=goal_summary,
+        uncertain_fields=uncertain_fields,
+        needs_clarification=needs_clarification,
         unclassified_clues=unclassified_clues,
+        semantic_scores=semantic_scores,
+        semantic_evidence=semantic_evidence,
+        intent_confidence=intent_confidence,
         notes=draft.get("notes") or local_intent.notes,
         parse_source="llm+local",
         llm_payload=draft,
     )
+    apply_semantic_hints(parsed_intent, query or "")
+    return refresh_intent_derived_fields(parsed_intent)

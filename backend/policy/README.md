@@ -21,6 +21,9 @@ Recommended tuning order:
 
 - Raise `preference_match_score` and `semantic_score` if routes are technically valid
   but do not feel like the user asked.
+- Raise `query_alignment_score` when long-tail natural-language queries are being
+  understood, but the top reranked POIs still feel too template-like or too
+  generic.
 - Raise `rating_score`, `budget_score`, or `time_suitability_score` if routes feel
   too noisy or too risky.
 - Increase penalty multipliers only when queue/crowd issues are consistently ignored.

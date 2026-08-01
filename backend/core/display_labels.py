@@ -30,6 +30,7 @@ def collect_preference_labels(intent: Any) -> list[str]:
         "prefer_quiet": "quiet",
         "prefer_rainy_day": "rainy_day",
         "prefer_value": "value",
+        "prefer_premium": "premium",
         "prefer_family": "family",
         "prefer_friends": "friends",
         "prefer_solo": "solo",

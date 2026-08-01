@@ -1,0 +1,88 @@
+{
+  "intent_confidence": {
+    "city_bonus": 0.16,
+    "required_category_bonus": 0.08,
+    "preference_bonus": 0.07,
+    "avoid_bonus": 0.09,
+    "budget_bonus": 0.07,
+    "time_bonus": 0.07,
+    "start_location_bonus": 0.06,
+    "pace_bonus": 0.06,
+    "must_include_bonus": 0.08,
+    "current_route_bonus": 0.12,
+    "mixed_signal_bonus": 0.08,
+    "multi_category_bonus": 0.05,
+    "unclassified_penalty": 0.04,
+    "long_query_penalty": 0.12
+  },
+  "fast_gate_threshold": {
+    "default": 0.56,
+    "modify": 0.54
+  },
+  "role": {
+    "primary_min_strength": 0.45,
+    "primary_min_count_with_support": 2,
+    "support_cap": 1,
+    "secondary_support_cap": 1,
+    "primary_priority": [
+      "scene",
+      "museum",
+      "exhibition",
+      "night",
+      "street",
+      "park",
+      "shopping",
+      "library",
+      "food",
+      "coffee"
+    ]
+  },
+  "planner": {
+    "beam_size": 6,
+    "beam_candidate_limit": 24,
+    "distance_matrix_top_k": 28,
+    "cluster_bonus": 0.08,
+    "cluster_match": 1.0,
+    "cluster_mismatch": 0.55,
+    "quota_bonus": 0.18,
+    "quota_penalty": 0.45,
+    "support_decay": 0.05,
+    "quota_miss_penalty": 0.05
+  },
+  "retrieval": {
+    "semantic_similarity_threshold": 0.46,
+    "vector_threshold": 0.025,
+    "vector_limit": 90,
+    "backend": {
+      "lexical_weight": 0.72,
+      "dense_weight": 1.0,
+      "hash_vector_dim": 384,
+      "enable_faiss": true,
+      "bm25_k1": 1.5,
+      "bm25_b": 0.75
+    },
+    "lane_caps": {
+      "must_include": 24,
+      "category": 72,
+      "bm25": 72,
+      "text_signal": 56,
+      "semantic_similarity": 72,
+      "vector": 72,
+      "start_location": 18
+    },
+    "fallback_min_selected": 40,
+    "noise": {
+      "max_semantic_term_count_for_low_noise": 6,
+      "max_text_signal_share_for_low_noise": 0.55,
+      "min_lane_count_for_diversity": 3,
+      "max_lane_overlap_ratio_for_low_noise": 0.65
+    }
+  },
+  "verification": {
+    "min_gap_penalty": 0.08,
+    "cap_gap_penalty": 0.08
+  },
+  "explanation": {
+    "max_length": 80
+  }
+}

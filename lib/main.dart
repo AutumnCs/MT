@@ -287,7 +287,13 @@ class _PlannerInputPageState extends State<PlannerInputPage> {
         city: effectiveCity,
       );
 
-      final routeResponse = await apiService.generateRoute(request);
+      final routeResponse = await apiService.generateRouteStream(
+        request,
+        onProgress: (message) {
+          if (!mounted) return;
+          setState(() => _loadingMessage = message);
+        },
+      );
 
       if (!mounted) return;
       setState(() => _isLoading = false);

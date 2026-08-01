@@ -46,9 +46,9 @@ from core import prompt_templates
 # 常量定义
 # ============================================================================
 
-# API 超时设置（秒）
-DEFAULT_TIMEOUT = 30.0
-MAX_RETRIES = 2
+# API 超时设置（秒）。路线生成有 <10s 的体验目标，意图解析不能无限等模型。
+DEFAULT_TIMEOUT = 6.0
+MAX_RETRIES = 1
 
 # LLM 提供商
 LLMProvider = str
@@ -56,8 +56,12 @@ PROVIDER_DASHSCOPE = "dashscope"
 PROVIDER_OPENAI = "openai"
 
 # 模型配置
-DEFAULT_DASHSCOPE_MODEL = "qwen-plus"
+DEFAULT_DASHSCOPE_MODEL = "qwen-turbo"
 DEFAULT_OPENAI_MODEL = "gpt-4"
+
+
+def _json_response_format() -> dict[str, str]:
+    return {"type": "json_object"}
 
 
 def _load_env_file() -> None:
@@ -85,6 +89,15 @@ def _load_env_file() -> None:
 
 
 _load_env_file()
+
+try:
+    DEFAULT_TIMEOUT = float(os.getenv("LLM_INTENT_TIMEOUT", str(DEFAULT_TIMEOUT)))
+except ValueError:
+    DEFAULT_TIMEOUT = 6.0
+try:
+    MAX_RETRIES = max(1, int(os.getenv("LLM_INTENT_MAX_RETRIES", str(MAX_RETRIES))))
+except ValueError:
+    MAX_RETRIES = 1
 
 
 def _post_json_with_urllib(
@@ -154,6 +167,7 @@ class LLMIntentClient:
         task_hint: Optional[str] = None,
         original_query: Optional[str] = None,
         current_route: Any = None,
+        memory_context: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> Optional[ParsedIntent]:
         """
@@ -182,6 +196,7 @@ class LLMIntentClient:
                 city=city,
                 original_query=original_query,
                 current_route=current_route,
+                memory_context=memory_context,
             )
 
             # 调用 LLM
@@ -246,6 +261,8 @@ class LLMIntentClient:
             ],
             "temperature": 0.1,
         }
+        if os.getenv("LLM_INTENT_JSON_RESPONSE", "1") != "0":
+            payload["response_format"] = _json_response_format()
 
         # 重试逻辑
         last_error = None
@@ -332,6 +349,8 @@ class LLMIntentClient:
         }
 
         # 重试逻辑
+        if os.getenv("LLM_INTENT_JSON_RESPONSE", "1") != "0":
+            payload["response_format"] = _json_response_format()
         last_error = None
         for attempt in range(MAX_RETRIES):
             try:
@@ -465,7 +484,12 @@ class LLMIntentClient:
             draft_dict["_raw_response"] = response
 
             # 归一化为 ParsedIntent
-            return normalize_llm_intent(draft_dict, query, city)
+            try:
+                validated_draft = IntentDraft.model_validate(draft_dict)
+                draft_payload = validated_draft.model_dump(mode="json")
+            except Exception:
+                draft_payload = draft_dict
+            return normalize_llm_intent(draft_payload, query, city)
 
         except (json.JSONDecodeError, TypeError, ValueError) as e:
             if os.getenv("LLM_INTENT_DEBUG") == "1":
@@ -579,6 +603,7 @@ def parse_intent_with_llm(
     task_hint: Optional[str] = None,
     original_query: Optional[str] = None,
     current_route: Any = None,
+    memory_context: Optional[str] = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> Optional[ParsedIntent]:
     """Backward-compatible module-level entry point for LLM parsing."""
@@ -589,5 +614,6 @@ def parse_intent_with_llm(
         task_hint=task_hint,
         original_query=original_query,
         current_route=current_route,
+        memory_context=memory_context,
         timeout=timeout,
     )

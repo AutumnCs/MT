@@ -1,45 +1,24 @@
-# Muse - 现在就出发 文档索引
+# Docs Index
 
-这是项目文档的当前入口。比赛提交、答辩准备、二次润色和开发调试都优先从这里进入。
+This directory keeps the current implementation docs. Prefer these files over
+older planning notes when they disagree.
 
-## 当前权威文档
-
-- [技术报告](TECHNICAL_REPORT.md)：比赛提交版，结构较收敛。
-- [详细技术报告底稿](TECHNICAL_REPORT_DETAILED.md)：适合喂给 GPT 继续润色、压缩或生成 PPT。
-- [项目介绍](specs/PROJECT_INTRODUCTION.md)：当前项目口径和能力说明。
-- [项目要求整理](specs/PROJECT_REQUIREMENTS.md)：比赛需求与当前实现的对应关系。
-- [后端说明](../backend/README.md)：后端模块与当前执行链路。
-- [后端调试指南](../backend/BACKEND_GUIDE.md)：问题定位入口。
-
-## 推荐阅读顺序
+## Read In This Order
 
 1. [../README.md](../README.md)
-2. [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md)
-3. [TECHNICAL_REPORT_DETAILED.md](TECHNICAL_REPORT_DETAILED.md)
-4. [specs/PROJECT_INTRODUCTION.md](specs/PROJECT_INTRODUCTION.md)
-5. [../backend/README.md](../backend/README.md)
-6. [../backend/BACKEND_GUIDE.md](../backend/BACKEND_GUIDE.md)
-7. [setup/QUICKSTART.md](setup/QUICKSTART.md)
+2. [../backend/README.md](../backend/README.md)
+3. [architecture/README.md](architecture/README.md)
+4. [specs/CURRENT_SYSTEM.md](specs/CURRENT_SYSTEM.md)
+5. [specs/ROADMAP.md](specs/ROADMAP.md)
+6. [setup/QUICKSTART.md](setup/QUICKSTART.md)
 
-## 文档分组
+## Doc Groups
 
-- `setup/`：启动命令、运行方式、评测命令。
-- `specs/`：当前产品、上下文、多轮、记忆和优化规格。
-- `architecture/`：架构、能力治理和前端结构说明。
-- `legacy/`：历史方案和旧阶段记录，仅用于追溯，不作为当前实现依据。
+- `architecture/`: orchestration boundaries, coordinator, tool contracts, UI structure.
+- `setup/`: local run/debug commands.
+- `specs/`: current system shape, context/memory rules, and near-term roadmap.
 
-## 当前口径
+## Notes
 
-- 前端：Flutter。
-- 后端：FastAPI。
-- 城市：广州、上海。
-- 数据：本地 POI 数据，当前 `pois.json` 为 125 个 POI。
-- 意图解析：LLM-first，结合本地词典和 schema 归一化。
-- 推荐链路：POI 召回、多因子排序、Beam Search 路线组合。
-- 输出体验：路线工作台、多方案、时间线、解释、风险提示、地图预览。
-- 多轮能力：基于当前路线和会话上下文做增量修改。
-- 地图：天地图优先，本地经纬度估算兜底。
-
-## 旧文档处理规则
-
-如果 `docs/legacy/` 或旧计划文档中的内容与当前代码、README、技术报告冲突，以当前代码和本索引列出的权威文档为准。
+- `TECHNICAL_REPORT.md` and `TECHNICAL_REPORT_DETAILED.md` are background reports, not the source of truth.
+- Older planning drafts were removed from the main reading path after the backend moved to `ExecutionPlan + Tool Layer + workflow_trace`.

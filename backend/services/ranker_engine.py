@@ -6,6 +6,8 @@ from typing import Iterable
 
 from core.intent_lexicon import CATEGORY_DISPLAY_LABELS
 from core.schemas import POI, ParsedIntent
+from . import model_backends
+from . import semantic_retriever
 from . import review_analyzer
 from .poi_ranker_policy import RANKER_POLICY
 
@@ -37,6 +39,34 @@ def _contains_any(texts: list[str], terms: Iterable[str]) -> bool:
             if term in text:
                 return True
     return False
+
+
+def _query_alignment_scores(intent: ParsedIntent, pois: list[POI]) -> dict[str, float]:
+    query = semantic_retriever.intent_query(intent, getattr(intent, "original_query", "") or "")
+    if not query.strip():
+        return {}
+    rerank_provider = model_backends.get_rerank_provider()
+    if rerank_provider is not None and pois:
+        limit = int(model_backends.rerank_backend_info().get("max_items") or 64)
+        candidate_pairs = semantic_retriever.top_hybrid_pois(pois, query, limit=max(limit, len(pois)), threshold=0.0)
+        rerank_pois = [poi for poi, _ in candidate_pairs[:limit]]
+        rerank_docs = [_text_blob(poi) for poi in rerank_pois]
+        try:
+            raw_scores = rerank_provider.score_pairs(query, rerank_docs)
+        except Exception:
+            raw_scores = []
+        if raw_scores:
+            lower = min(raw_scores)
+            upper = max(raw_scores)
+            normalized = {}
+            for poi, score in zip(rerank_pois, raw_scores):
+                if upper <= lower:
+                    normalized[poi.id] = 1.0
+                else:
+                    normalized[poi.id] = _clip((float(score) - lower) / (upper - lower))
+            base_scores = semantic_retriever.hybrid_score_pois(pois, query)
+            return {**base_scores, **normalized}
+    return semantic_retriever.hybrid_score_pois(pois, query)
 
 
 def _current_route_poi_ids(intent: ParsedIntent) -> set[str]:
@@ -182,6 +212,13 @@ def _preference_match_score(poi: POI, intent: ParsedIntent) -> float:
             if float(poi.price or 0.0) == 0 or float(poi.price or 0.0) <= float(PREFERENCE_POLICY["value_price_threshold"])
             else float(PREFERENCE_POLICY["value_fallback_bonus"])
         )
+    if _has_preference(intent, "premium", "prefer_premium"):
+        if float(poi.price or 0.0) >= 120:
+            score += 0.22
+        if float(poi.rating or 0.0) >= 4.6:
+            score += 0.16
+        if review_analyzer.signal(poi, "date") >= 0.65 or review_analyzer.signal(poi, "photo") >= 0.65:
+            score += 0.12
     if _has_preference(intent, "indoor", "prefer_indoor"):
         score += float(PREFERENCE_POLICY["indoor_match_bonus"]) if poi.indoor_outdoor == "indoor" else float(PREFERENCE_POLICY["indoor_fallback_bonus"])
     if _has_preference(intent, "outdoor", "prefer_outdoor"):
@@ -250,6 +287,14 @@ def _semantic_score(poi: POI, intent: ParsedIntent) -> float:
             if float(poi.price or 0.0) == 0 or float(poi.price or 0.0) <= float(PREFERENCE_POLICY["value_price_threshold"])
             else float(SEMANTIC_POLICY["value_fallback"])
         )
+    if _has_preference(intent, "premium", "prefer_premium"):
+        premium = 0.45
+        if float(poi.price or 0.0) >= 120:
+            premium += 0.25
+        if float(poi.rating or 0.0) >= 4.6:
+            premium += 0.18
+        premium += 0.08 * max(review_analyzer.signal(poi, "date"), review_analyzer.signal(poi, "photo"))
+        values.append(_clip(premium))
     if _has_preference(intent, "indoor", "prefer_indoor"):
         values.append(float(SEMANTIC_POLICY["indoor_match"]) if poi.indoor_outdoor == "indoor" else float(SEMANTIC_POLICY["indoor_fallback"]))
     if _has_preference(intent, "outdoor", "prefer_outdoor"):
@@ -316,6 +361,7 @@ def _calculate_final_score(scores: dict[str, float]) -> float:
     value = (
         float(FINAL_WEIGHTS["preference_match_score"]) * scores["preference_match_score"]
         + float(FINAL_WEIGHTS["semantic_score"]) * scores["semantic_score"]
+        + float(FINAL_WEIGHTS["query_alignment_score"]) * scores["query_alignment_score"]
         + float(FINAL_WEIGHTS["category_match_score"]) * scores["category_match_score"]
         + float(FINAL_WEIGHTS["rating_score"]) * scores["rating_score"]
         + float(FINAL_WEIGHTS["budget_score"]) * scores["budget_score"]
@@ -368,11 +414,13 @@ def rank_pois(pois: list[POI], intent: ParsedIntent, top_k: int = 30) -> list[di
     if not city_filtered:
         return []
 
+    query_alignment = _query_alignment_scores(intent, city_filtered)
     scored: list[dict] = []
     for poi in city_filtered:
         scores = {
             "preference_match_score": _preference_match_score(poi, intent),
             "semantic_score": _semantic_score(poi, intent),
+            "query_alignment_score": _clip(float(query_alignment.get(poi.id, 0.0) or 0.0)),
             "rating_score": _rating_score(poi),
             "category_match_score": _category_match_score(poi, intent),
             "budget_score": _budget_score(poi, intent),

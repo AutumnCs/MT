@@ -252,6 +252,7 @@ class RouteRequest(BaseModel):
     query: str  # 用户需求文本
     preferences: Optional[List[str]] = None  # 额外偏好
     city: Optional[str] = None  # 显式城市
+    route_strategy: Optional[str] = None  # 路线策略：fast / balanced / compact
 
 
 class IntentModification(BaseModel):
@@ -338,6 +339,7 @@ class RouteResponse(BaseModel):
     clarification_question: Optional[str] = None  # 澄清问题
     clarification_options: List[str] = Field(default_factory=list)  # 澄清选项
     clarification_reason: Optional[str] = None  # 澄清原因
+    workflow_trace: Optional[Any] = None  # 统一的流程轨迹快照
 
     @property
     def main_stops(self) -> List[Any]:
@@ -442,11 +444,18 @@ class ParsedIntent(BaseModel):
     budget: Optional[float] = None  # 预算
     required_categories: List[str] = Field(default_factory=list)  # 必要类别
     preferred_categories: List[str] = Field(default_factory=list)  # 兼容旧字段名
+    primary_categories: List[str] = Field(default_factory=list)  # LLM 主目标类别
+    secondary_categories: List[str] = Field(default_factory=list)  # LLM 次要类别
     preferences: List[str] = Field(default_factory=list)  # 偏好
+    party_types: List[str] = Field(default_factory=list)
+    primary_party_type: Optional[str] = None
     avoid: List[str] = Field(default_factory=list)  # 避雷
     pace: str = "normal"  # 节奏
     transport_mode: str = "mixed"  # 交通方式
     must_include: List[str] = Field(default_factory=list)  # 必须包含
+    goal_summary: Optional[str] = None  # LLM 对本次需求的简短总结
+    uncertain_fields: List[str] = Field(default_factory=list)  # LLM 认为不确定的字段
+    needs_clarification: bool = False  # 是否建议追问
     notes: Optional[str] = None  # 补充说明
 
     # 向后兼容：现有打分/筛选逻辑仍然依赖这些布尔字段
@@ -463,6 +472,7 @@ class ParsedIntent(BaseModel):
     prefer_friends: bool = False
     prefer_solo: bool = False
     prefer_value: bool = False
+    prefer_premium: bool = False
     prefer_indoor: bool = False
     prefer_outdoor: bool = False
     prefer_citywalk: bool = False
@@ -476,6 +486,14 @@ class ParsedIntent(BaseModel):
     soft_preferences: List[str] = Field(default_factory=list)
     recognized_signals: List[str] = Field(default_factory=list)
     unclassified_clues: List[str] = Field(default_factory=list)
+    semantic_hints: List[str] = Field(default_factory=list)
+    semantic_scores: Dict[str, float] = Field(default_factory=dict)
+    semantic_evidence: Dict[str, str] = Field(default_factory=dict)
+    primary_categories: List[str] = Field(default_factory=list)
+    side_categories: List[str] = Field(default_factory=list)
+    category_caps: Dict[str, int] = Field(default_factory=dict)
+    category_min_counts: Dict[str, int] = Field(default_factory=dict)
+    intent_confidence: Optional[float] = None
     hard_constraints: List[str] = Field(default_factory=list)
     parse_source: str = "local"
     current_route: Optional[Any] = None
@@ -509,12 +527,14 @@ class ParsedIntent(BaseModel):
             "friends": "prefer_friends",
             "solo": "prefer_solo",
             "value": "prefer_value",
+            "premium": "prefer_premium",
             "indoor": "prefer_indoor",
             "outdoor": "prefer_outdoor",
             "citywalk": "prefer_citywalk",
             "efficient": "prefer_efficient",
             "compact": "prefer_compact",
         }
+        party_keys = ("couple", "family", "friends", "solo")
         avoid_flags = {
             "avoid_spicy": "avoid_spicy",
             "avoid_far": "avoid_far",
@@ -528,6 +548,14 @@ class ParsedIntent(BaseModel):
             if key in self.preferences:
                 setattr(self, field_name, True)
 
+        derived_party_types = [key for key in party_keys if key in self.preferences]
+        if not self.party_types:
+            self.party_types = list(derived_party_types)
+        else:
+            self.party_types = list(dict.fromkeys([*(self.party_types or []), *derived_party_types]))
+        if not self.primary_party_type and self.party_types:
+            self.primary_party_type = str(self.party_types[0])
+
         for key, field_name in avoid_flags.items():
             if key in self.avoid:
                 setattr(self, field_name, True)
@@ -536,12 +564,28 @@ class ParsedIntent(BaseModel):
             self.soft_preferences = list(self.preferences)
 
         if not self.preferred_categories:
-            self.preferred_categories = list(self.required_categories)
+            self.preferred_categories = list(
+                dict.fromkeys([*self.primary_categories, *self.secondary_categories, *self.required_categories])
+            )
+
+        if not self.primary_categories and self.required_categories:
+            self.primary_categories = list(self.required_categories[:2])
+
+        if not self.secondary_categories and len(self.required_categories) > len(self.primary_categories):
+            self.secondary_categories = list(self.required_categories[len(self.primary_categories) :])
 
         if not self.intent_tags:
             self.intent_tags = list(
                 dict.fromkeys(
-                    [*self.required_categories, *self.preferences, *self.avoid, *self.must_include]
+                    [
+                        *self.primary_categories,
+                        *self.secondary_categories,
+                        *self.required_categories,
+                        *self.preferences,
+                        *self.party_types,
+                        *self.avoid,
+                        *self.must_include,
+                    ]
                 )
             )
 
@@ -641,11 +685,21 @@ class IntentDraft(BaseModel):
     budget: Optional[Any] = None
     required_categories: List[str] = Field(default_factory=list)
     preferences: List[str] = Field(default_factory=list)
+    party_types: List[str] = Field(default_factory=list)
+    primary_party_type: Optional[str] = None
     avoid: List[str] = Field(default_factory=list)
+    primary_categories: List[str] = Field(default_factory=list)
+    secondary_categories: List[str] = Field(default_factory=list)
     pace: Optional[str] = None
     transport_mode: Optional[str] = None
     must_include: List[str] = Field(default_factory=list)
+    goal_summary: Optional[str] = None
+    uncertain_fields: List[str] = Field(default_factory=list)
+    needs_clarification: Optional[bool] = None
     notes: Optional[str] = None
+    semantic_scores: Dict[str, Any] = Field(default_factory=dict)
+    semantic_evidence: Dict[str, Any] = Field(default_factory=dict)
+    intent_confidence: Optional[Any] = None
     raw_response: Optional[str] = None  # 原始响应
 
 

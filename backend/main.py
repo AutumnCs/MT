@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from core.api_contracts import (
     CapabilityMatchRequest,
@@ -65,10 +67,7 @@ async def build_intent_prompt(request: PromptRequest):
 
 
 def _parse_intent_with_optional_llm(query: str, city: Optional[str] = None) -> schemas.ParsedIntent:
-    parsed_intent = llm_intent_client.parse_intent_with_llm(query, city)
-    if parsed_intent is not None:
-        return parsed_intent
-    return intent_parser.parse_intent(query, city)
+    return route_service.parse_intent_only(query, city=city)
 
 
 def _record_context_turn(
@@ -122,16 +121,102 @@ async def generate_route(request: RouteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _sse_event(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/route/generate/stream")
+async def generate_route_stream(request: RouteRequest):
+    async def event_stream():
+        try:
+            yield _sse_event("progress", {"stage": "received", "message": "已收到需求，开始理解你的行程想法"})
+            context_snapshot = context_service.get_context_snapshot(request.session_id) if request.session_id else None
+            profile = context_snapshot.profile if context_snapshot is not None else None
+
+            yield _sse_event("progress", {"stage": "intent", "message": "正在抽取城市、偏好和约束"})
+            intent, response = route_service.plan_route(
+                request.query,
+                preferences=request.preferences,
+                city=request.city,
+                profile=profile,
+                context_snapshot=context_snapshot,
+            )
+
+            parse_source = getattr(intent, "parse_source", "local")
+            confidence = getattr(intent, "intent_confidence", None)
+            yield _sse_event(
+                "progress",
+                {
+                    "stage": "planning",
+                    "message": "已完成需求理解，正在召回 POI 并生成路线",
+                    "parse_source": parse_source,
+                    "intent_confidence": confidence,
+                },
+            )
+
+            _record_context_turn(
+                request.session_id,
+                event_type="clarification_requested" if response.clarification_needed else "route_created",
+                query=request.query,
+                intent=intent,
+                response=response,
+            )
+            yield _sse_event(
+                "final",
+                {
+                    "stage": "done",
+                    "message": "路线已生成",
+                    "response": response.model_dump(mode="json"),
+                },
+            )
+        except route_service.RoutePlanningError as err:
+            yield _sse_event(
+                "error",
+                {
+                    "stage": "error",
+                    "message": str(err.detail),
+                    "status_code": err.status_code,
+                },
+            )
+        except Exception as e:
+            yield _sse_event(
+                "error",
+                {
+                    "stage": "error",
+                    "message": str(e),
+                    "status_code": 500,
+                },
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/api/route/modify", response_model=schemas.RouteResponse)
 async def modify_route(request: ModifyRequest):
     try:
-        inferred_city = infer_city_from_route(request.current_route)
         context_snapshot = context_service.get_context_snapshot(request.session_id) if request.session_id else None
         profile = context_snapshot.profile if context_snapshot is not None else None
+        current_route = request.current_route
+        if current_route is None and context_snapshot is not None:
+            current_route = context_service.get_current_route_version(request.session_id)
+        if isinstance(current_route, dict) and isinstance(current_route.get("route"), dict):
+            current_route = current_route.get("route")
+        inferred_city = infer_city_from_route(current_route)
+        if inferred_city is None and context_snapshot is not None:
+            session_city = getattr(context_snapshot.session, "city", None)
+            if isinstance(session_city, str) and session_city.strip():
+                inferred_city = session_city.strip()
         intent, response = route_service.plan_route(
             request.query,
             city=inferred_city,
-            current_route=request.current_route,
+            current_route=current_route,
             original_query=request.original_query or request.query,
             profile=profile,
             context_snapshot=context_snapshot,
@@ -169,6 +254,14 @@ async def get_context(session_id: str, limit: int = 12):
 @app.get("/api/context/{session_id}/profile")
 async def get_context_profile(session_id: str):
     return context_service.get_profile(session_id).model_dump(mode="json")
+
+
+@app.get("/api/context/{session_id}/current-route")
+async def get_current_route(session_id: str):
+    route_version = context_service.get_current_route_version(session_id)
+    if route_version is None:
+        raise HTTPException(status_code=404, detail="当前会话没有可用的路线版本")
+    return route_version
 
 
 @app.post("/api/context/{session_id}/event")

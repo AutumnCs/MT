@@ -1,22 +1,38 @@
-# 架构文档
+# Architecture Docs
 
-本目录保存当前架构、能力治理和前端结构说明。
+These docs explain why the system is split the way it is, and where future
+agentic behavior is allowed to live.
 
-## 当前文档
+## Current Docs
 
-- [AGENT_HARNESS_SPEC.md](AGENT_HARNESS_SPEC.md)：能力编排和 agent harness 治理思路。
-- [SKILL_SPEC.md](SKILL_SPEC.md)：能力/技能边界和回归治理。
-- [FLUTTER_STRUCTURE.md](FLUTTER_STRUCTURE.md)：当前 Flutter 前端结构。
+- [AGENT_COORDINATOR_SPEC.md](AGENT_COORDINATOR_SPEC.md): controlled coordinator, `RouteState`, `ExecutionPlan`, tool observations, RAG noise control, memory boundaries, and patch-based repair.
+- [AGENT_HARNESS_SPEC.md](AGENT_HARNESS_SPEC.md): earlier harness and tool-contract thinking. Keep as background; prefer the coordinator spec for current implementation.
+- [SKILL_SPEC.md](SKILL_SPEC.md): skill governance and capability boundaries. Keep as background for future toolization.
+- [FLUTTER_STRUCTURE.md](FLUTTER_STRUCTURE.md): Flutter route workspace structure.
 
-## 当前架构口径
+## Current Architecture
 
-- 前端：Flutter 路线输入页、澄清页、路线工作台、解释页、地图预览组件。
-- 后端：FastAPI，按 core/services/policy/lexicon/eval/tools 分层。
-- 智能链路：LLM-first 意图解析 + 本地规则归一化 + POI 召回 + 多因子排序 + Beam Search 路线组合。
-- 地图链路：天地图优先，本地经纬度估算兜底。
-- 上下文：会话、路线版本和轻量画像，画像只作为软偏置。
+```text
+Intent parsing
+  -> RouteCoordinator builds ExecutionPlan
+  -> optional memory context tool when a session exists
+  -> POI retrieval / ranking / candidate building
+  -> route planning
+  -> optional map/UGC tools through Tool Layer
+  -> validation
+  -> patch-based repair when quality gaps are repairable
+  -> explanation and workflow trace
+```
 
-## 使用建议
+The main route flow remains deterministic and replayable. Dynamic behavior is
+allowed through bounded tools, explicit budgets, fallback policy, and typed
+observations.
 
-如果是比赛报告或答辩，优先读 `docs/TECHNICAL_REPORT.md` 和 `docs/TECHNICAL_REPORT_DETAILED.md`。如果是代码修改，再读本目录文档。
+## Source Of Truth
 
+When docs disagree, use this order:
+
+1. Current code and evals.
+2. [AGENT_COORDINATOR_SPEC.md](AGENT_COORDINATOR_SPEC.md).
+3. Product specs in `docs/specs/`.
+4. Older reports and background docs.

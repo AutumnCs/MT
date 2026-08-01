@@ -14,11 +14,82 @@ class RouteApiService {
   }
 
   static const Duration timeout = Duration(seconds: 30);
+  static const Duration intentParseTimeout = Duration(seconds: 3);
   static const bool enableMockFallback = false;
 
   final http.Client _client;
 
   RouteApiService({http.Client? client}) : _client = client ?? http.Client();
+
+  Future<RouteResponse> generateRouteStream(
+    RouteRequest routeRequest, {
+    void Function(String message)? onProgress,
+  }) async {
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('$baseUrl/route/generate/stream'),
+      )
+        ..headers['Content-Type'] = 'application/json'
+        ..headers['Accept'] = 'text/event-stream'
+        ..body = jsonEncode(routeRequest.toJson());
+
+      final response = await _client.send(request).timeout(timeout);
+      if (response.statusCode != 200) {
+        final detail = await response.stream.bytesToString();
+        throw ApiException(
+          '生成路线失败: ${response.statusCode}${detail.isEmpty ? '' : '，$detail'}',
+          statusCode: response.statusCode,
+        );
+      }
+
+      final buffer = StringBuffer();
+      await for (final chunk in response.stream.transform(utf8.decoder)) {
+        buffer.write(chunk);
+        while (true) {
+          final text = buffer.toString();
+          final boundary = text.indexOf('\n\n');
+          if (boundary < 0) break;
+          final block = text.substring(0, boundary);
+          buffer
+            ..clear()
+            ..write(text.substring(boundary + 2));
+
+          final event = _parseSseBlock(block);
+          final eventName = event['event'] as String? ?? 'message';
+          final data = event['data'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+
+          if (eventName == 'progress') {
+            final message = data['message']?.toString();
+            if (message != null && message.isNotEmpty) {
+              onProgress?.call(message);
+            }
+          } else if (eventName == 'final') {
+            final payload = data['response'];
+            if (payload is Map<String, dynamic>) {
+              return RouteResponse.fromJson(payload);
+            }
+            throw ApiException('流式路线返回缺少完整路线数据');
+          } else if (eventName == 'error') {
+            final message = data['message']?.toString() ?? '流式生成路线失败';
+            final statusCode = int.tryParse(data['status_code']?.toString() ?? '');
+            throw ApiException(message, statusCode: statusCode);
+          }
+        }
+      }
+
+      throw ApiException('流式生成路线失败：后端没有返回最终路线');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      if (!enableMockFallback) {
+        final message = e is SocketException
+            ? '无法连接后端生成路线，请确认后端服务已启动'
+            : '生成路线失败，流式数据解析异常';
+        throw ApiException('$message：$e');
+      }
+      return _getMockRouteResponse(routeRequest.query);
+    }
+  }
 
   Future<RouteResponse> generateRoute(RouteRequest request) async {
     try {
@@ -50,6 +121,31 @@ class RouteApiService {
       }
       return _getMockRouteResponse(request.query);
     }
+  }
+
+  Map<String, Object?> _parseSseBlock(String block) {
+    String eventName = 'message';
+    final dataLines = <String>[];
+    for (final rawLine in const LineSplitter().convert(block)) {
+      final line = rawLine.trimRight();
+      if (line.startsWith('event:')) {
+        eventName = line.substring(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.add(line.substring(5).trimLeft());
+      }
+    }
+    final rawData = dataLines.join('\n');
+    Map<String, dynamic> data = const <String, dynamic>{};
+    if (rawData.isNotEmpty) {
+      final decoded = jsonDecode(rawData);
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      }
+    }
+    return {
+      'event': eventName,
+      'data': data,
+    };
   }
 
   Future<RouteResponse> modifyRoute(ModifyRequest request) async {
@@ -131,7 +227,7 @@ class RouteApiService {
               'llm_draft': llmDraft?.toJson(),
             }),
           )
-          .timeout(timeout);
+          .timeout(intentParseTimeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;

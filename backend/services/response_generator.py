@@ -1,4 +1,4 @@
-"""
+﻿"""
 响应生成服务模块
 =================
 
@@ -15,6 +15,8 @@
 
 from core.contracts import ClarificationDecision, RouteDiagnostics, RouteTaskHint
 from core.display_labels import build_intent_summary, collect_preference_labels
+from core.intent_ir import build_intent_ir
+from core.route_policy import ROUTE_POLICY
 from core.schemas import ParsedIntent, RouteResponse, RouteStop
 
 
@@ -30,6 +32,76 @@ _CATEGORY_LABELS = {
     "park": "公园",
     "night": "夜景",
 }
+
+
+def _intent_trace_summary(intent: ParsedIntent) -> dict:
+    intent_ir = build_intent_ir(intent).model_dump(mode="json")
+    parse_source = str(getattr(intent, "parse_source", "local") or "local")
+    llm_payload = getattr(intent, "llm_payload", None)
+    semantic_scores = dict(getattr(intent, "semantic_scores", {}) or {})
+    sorted_scores = sorted(
+        (
+            {"label": str(label), "score": round(float(score), 3)}
+            for label, score in semantic_scores.items()
+            if label
+        ),
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+    required_categories = [str(item) for item in getattr(intent, "required_categories", []) or [] if item]
+    preferences = [str(item) for item in getattr(intent, "preferences", []) or [] if item]
+    avoid = [str(item) for item in getattr(intent, "avoid", []) or [] if item]
+    uncertain_fields = [str(item) for item in getattr(intent, "uncertain_fields", []) or [] if item]
+    recognized_signals = [str(item) for item in getattr(intent, "recognized_signals", []) or [] if item]
+    unclassified_clues = [str(item) for item in getattr(intent, "unclassified_clues", []) or [] if item]
+    context_bias = [str(item) for item in getattr(intent, "context_bias", []) or [] if item]
+    profile_bias = [str(item) for item in getattr(intent, "profile_bias", []) or [] if item]
+    hard_constraints = [str(item) for item in getattr(intent, "hard_constraints", []) or [] if item]
+    semantic_hints = [str(item) for item in getattr(intent, "semantic_hints", []) or [] if item]
+    confidence = getattr(intent, "intent_confidence", None)
+    try:
+        confidence_value = round(float(confidence), 3) if confidence is not None else None
+    except (TypeError, ValueError):
+        confidence_value = None
+
+    path = "local_rule_parse"
+    if parse_source == "local_fast_gate":
+        path = "local_semantic_fast_gate"
+    elif parse_source == "local_fallback":
+        path = "llm_failed_then_local_fallback"
+    elif parse_source == "llm+local":
+        path = "llm_parse_with_local_normalization"
+
+    schema_checks = {
+        "city_present": bool(getattr(intent, "city", None)),
+        "time_window_present": bool(getattr(intent, "start_time", None) or getattr(intent, "end_time", None)),
+        "budget_present": getattr(intent, "budget", None) is not None,
+        "constraints_ready": bool(required_categories or preferences or avoid or getattr(intent, "must_include", [])),
+        "clarification_recommended": bool(getattr(intent, "needs_clarification", False) or uncertain_fields),
+    }
+
+    return {
+        "intent_ir": intent_ir,
+        "parse_source": parse_source,
+        "path": path,
+        "confidence": confidence_value,
+        "schema_checks": schema_checks,
+        "llm_used": bool(llm_payload),
+        "memory_bias_used": bool(context_bias or profile_bias),
+        "current_route_bound": bool(getattr(intent, "current_route", None) is not None),
+        "required_categories": required_categories,
+        "preferences": preferences,
+        "avoid": avoid,
+        "must_include": [str(item) for item in getattr(intent, "must_include", []) or [] if item],
+        "hard_constraints": hard_constraints,
+        "uncertain_fields": uncertain_fields,
+        "recognized_signals": recognized_signals[:8],
+        "semantic_hints": semantic_hints[:6],
+        "top_semantic_scores": sorted_scores[:6],
+        "unclassified_clues": unclassified_clues[:6],
+        "context_bias": context_bias[:6],
+        "profile_bias": profile_bias[:6],
+    }
 
 
 def _minutes_to_time(value: int | float | str | None) -> str:
@@ -378,6 +450,242 @@ def _warnings(stops: list[RouteStop], intent: ParsedIntent) -> list[str]:
     return result
 
 
+def _workflow_stages(workflow_trace: dict[str, object], explanation: str) -> list[dict[str, str]]:
+    stages: list[dict[str, str]] = [{"stage": "input"}]
+    coordinator = workflow_trace.get("coordinator") if isinstance(workflow_trace, dict) else {}
+    if not isinstance(coordinator, dict):
+        coordinator = {}
+    decisions = coordinator.get("decision_log") or []
+    if decisions:
+        stages.append({"stage": "understanding"})
+    if coordinator.get("execution_plan"):
+        stages.append({"stage": "execution_plan"})
+    if coordinator.get("retrieval"):
+        stages.append({"stage": "retrieval"})
+    if workflow_trace.get("memory"):
+        stages.append({"stage": "memory"})
+    if coordinator.get("tool_results"):
+        stages.append({"stage": "tools"})
+    if coordinator.get("planning"):
+        stages.append({"stage": "planning"})
+    if coordinator.get("quality_report") or coordinator.get("route_quality"):
+        stages.append({"stage": "critique"})
+    if coordinator.get("quality_report"):
+        stages.append({"stage": "guard"})
+    if decisions:
+        stages.append({"stage": "coordination"})
+    if explanation:
+        stages.append({"stage": "explain"})
+    unique: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in stages:
+        stage = str(item.get("stage") or "")
+        if stage and stage not in seen:
+            seen.add(stage)
+            unique.append(item)
+    return unique
+
+
+def _tool_payload(tool_result: object) -> dict:
+    if hasattr(tool_result, "model_dump"):
+        data = tool_result.model_dump(mode="json")
+    elif isinstance(tool_result, dict):
+        data = dict(tool_result)
+    else:
+        return {}
+    payload = data.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _memory_trace_summary(tool_results: list[object]) -> dict:
+    for item in tool_results:
+        data = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item) if isinstance(item, dict) else {}
+        if str(data.get("tool") or "") != "memory_context":
+            continue
+        payload = _tool_payload(data)
+        stable_categories = list(payload.get("stable_categories") or [])[:4]
+        stable_preferences = list(payload.get("stable_preferences") or [])[:4]
+        stable_avoids = list(payload.get("stable_avoids") or [])[:4]
+        recent_categories = list(payload.get("recent_categories") or [])[:3]
+        recent_preferences = list(payload.get("recent_preferences") or [])[:3]
+        recent_avoids = list(payload.get("recent_avoids") or [])[:3]
+        pending_conflicts = list(payload.get("pending_conflicts") or [])[:3]
+        prompt_block = str(payload.get("prompt_block") or "")
+        return {
+            "status": data.get("status", "unknown"),
+            "confidence": data.get("confidence", 0.0),
+            "session_id": payload.get("session_id"),
+            "phase": payload.get("phase"),
+            "memory_strength": payload.get("memory_strength", 0.0),
+            "profile_confidence": payload.get("profile_confidence", 0.0),
+            "stable_signal_count": payload.get("stable_signal_count", 0),
+            "recent_signal_count": payload.get("recent_signal_count", 0),
+            "decay_score": payload.get("decay_score", 0.0),
+            "staleness_days": payload.get("staleness_days"),
+            "home_city": payload.get("home_city"),
+            "stable_categories": stable_categories,
+            "stable_preferences": stable_preferences,
+            "stable_avoids": stable_avoids,
+            "recent_categories": recent_categories,
+            "recent_preferences": recent_preferences,
+            "recent_avoids": recent_avoids,
+            "pending_conflicts": pending_conflicts,
+            "pending_conflict_count": len(list(payload.get("pending_conflicts") or [])),
+            "route_version_count": payload.get("route_version_count", 0),
+            "prompt_block_lines": len([line for line in prompt_block.splitlines() if line.strip()]),
+            "noise_risk": data.get("noise_risk", "unknown"),
+            "used_by": list(data.get("used_by") or []),
+        }
+    return {}
+
+
+def _retrieval_trace_summary(tool_results: list[object]) -> dict:
+    summary = {
+        "recall": {},
+        "filter": {},
+        "rerank": {},
+    }
+    for item in tool_results:
+        data = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item) if isinstance(item, dict) else {}
+        tool = str(data.get("tool") or "")
+        payload = _tool_payload(data)
+        if tool == "poi_recall":
+            summary["recall"] = {
+                "status": data.get("status", "unknown"),
+                "confidence": data.get("confidence", 0.0),
+                "noise_risk": payload.get("noise_risk", data.get("noise_risk", "unknown")),
+                "hybrid_backend": payload.get("hybrid_backend"),
+                "lexical_backend": payload.get("lexical_backend"),
+                "dense_backend": payload.get("dense_backend"),
+                "faiss_enabled": payload.get("faiss_enabled", False),
+                "vector_dim": payload.get("vector_dim"),
+                "active_lanes": list(payload.get("active_lanes") or []),
+                "recall_lane_count": payload.get("recall_lane_count", 0),
+                "raw_candidate_count": payload.get("raw_candidate_count", 0),
+                "selected_count": payload.get("selected_count", 0),
+                "text_signal_share": payload.get("text_signal_share", 0.0),
+                "lane_overlap_ratio": payload.get("lane_overlap_ratio", 0.0),
+                "used_city_fallback": payload.get("used_city_fallback", False),
+                "fallback_expanded": payload.get("fallback_expanded", False),
+            }
+        elif tool == "constraint_filter":
+            summary["filter"] = {
+                "status": data.get("status", "unknown"),
+                "input_count": payload.get("input_count", 0),
+                "output_count": payload.get("output_count", 0),
+                "removed_count": payload.get("removed_count", 0),
+                "budget": payload.get("budget"),
+                "avoid": list(payload.get("avoid") or []),
+            }
+        elif tool == "poi_rerank":
+            summary["rerank"] = {
+                "status": data.get("status", "unknown"),
+                "confidence": data.get("confidence", 0.0),
+                "rerank_backend": payload.get("rerank_backend"),
+                "rerank_model": payload.get("rerank_model"),
+                "rerank_active": payload.get("rerank_active", False),
+                "input_count": payload.get("input_count", 0),
+                "output_count": payload.get("output_count", 0),
+                "top_k": payload.get("top_k", 0),
+                "top_final_score": payload.get("top_final_score", 0.0),
+                "score_span": payload.get("score_span", 0.0),
+                "top_reasons": list(payload.get("top_reasons") or [])[:3],
+                "top_score_breakdown_avg": dict(payload.get("top_score_breakdown_avg") or {}),
+            }
+    return summary
+
+
+def _tool_trace_summary(tool_results: list[object]) -> dict:
+    summary = {
+        "memory": {},
+        "map": {},
+        "heat": {},
+        "ugc": {},
+    }
+    memory = _memory_trace_summary(tool_results)
+    if memory:
+        summary["memory"] = memory
+    for item in tool_results:
+        data = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item) if isinstance(item, dict) else {}
+        tool = str(data.get("tool") or "")
+        payload = _tool_payload(data)
+        if tool == "map_distance_matrix":
+            summary["map"] = {
+                "status": data.get("status", "unknown"),
+                "confidence": data.get("confidence", 0.0),
+                "provider": payload.get("provider"),
+                "mode": payload.get("mode"),
+                "segment_count": payload.get("segment_count", len(payload.get("segments") or [])),
+                "total_distance_km": payload.get("total_distance_km", 0.0),
+                "total_duration_min": payload.get("total_duration_min", 0),
+                "fallback_segments": payload.get("fallback_segment_count", 0),
+            }
+        elif tool == "heat_signal":
+            summary["heat"] = {
+                "status": data.get("status", "unknown"),
+                "confidence": data.get("confidence", 0.0),
+                "analyzed_count": payload.get("analyzed_count", 0),
+                "high_queue_count": payload.get("high_queue_count", 0),
+                "high_crowd_count": payload.get("high_crowd_count", 0),
+                "max_heat_score": payload.get("max_heat_score", 0.0),
+                "average_heat_score": payload.get("average_heat_score", 0.0),
+            }
+        elif tool == "ugc_signal":
+            summary["ugc"] = {
+                "status": data.get("status", "unknown"),
+                "confidence": data.get("confidence", 0.0),
+                "noise_risk": data.get("noise_risk", "unknown"),
+                "analyzed_count": payload.get("analyzed_count", 0),
+                "explicit_signal_count": payload.get("explicit_signal_count", 0),
+                "keyword_fallback_count": payload.get("keyword_fallback_count", 0),
+                "signal_quality": payload.get("signal_quality", 0.0),
+                "warning_ratio": payload.get("warning_ratio", 0.0),
+                "warning_counts": dict(payload.get("warning_counts") or {}),
+                "explanation_hints": list(payload.get("explanation_hints") or [])[:3],
+                "aspect_summary": dict(payload.get("aspect_summary") or {}),
+            }
+    return summary
+
+
+def _build_workflow_trace(planned_route: dict, explanation: str, intent: ParsedIntent | None = None) -> dict:
+    coordinator = dict(planned_route.get("coordinator", {}) or {})
+    if not coordinator:
+        coordinator = {
+            "execution_plan": planned_route.get("execution_plan", {}),
+            "tool_results": planned_route.get("tool_results", []),
+            "route_attempts": planned_route.get("route_attempts", []),
+        }
+    coordinator.setdefault("route_attempts", planned_route.get("route_attempts", []))
+    coordinator.setdefault("execution_plan", planned_route.get("execution_plan", {}))
+    coordinator.setdefault("tool_results", planned_route.get("tool_results", []))
+    coordinator.setdefault("route_quality", planned_route.get("route_quality", {}))
+    coordinator.setdefault("quality_report", planned_route.get("quality_report", {}))
+    tool_results = list(coordinator.get("tool_results", []) or [])
+    tool_summary = _tool_trace_summary(tool_results)
+    retrieval = _retrieval_trace_summary(tool_results)
+    workflow = {
+        "coordinator": coordinator,
+        "execution_plan": coordinator.get("execution_plan", {}),
+        "tool_results": tool_results,
+        "intent": _intent_trace_summary(intent) if intent is not None else {},
+        "intent_ir": build_intent_ir(intent).model_dump(mode="json") if intent is not None else {},
+        "memory": tool_summary.get("memory", {}),
+        "retrieval": retrieval,
+        "tools": {
+            "map": tool_summary.get("map", {}),
+            "heat": tool_summary.get("heat", {}),
+            "ugc": tool_summary.get("ugc", {}),
+        },
+        "route_attempts": coordinator.get("route_attempts", []),
+        "route_quality": coordinator.get("route_quality", {}),
+        "quality_report": coordinator.get("quality_report", {}),
+        "stages": [],
+        "explanation": explanation,
+    }
+    workflow["stages"] = _workflow_stages(workflow, explanation)
+    return workflow
+
+
 def generate_response(
     intent: ParsedIntent,
     ranked_pois: list[dict],
@@ -412,6 +720,10 @@ def generate_response(
     intent_summary = build_intent_summary(intent, getattr(intent, "original_query", "") or "")
     route_options = _route_options(main_stops, variants, intent, rank_by_poi_id, explanation or "")
     map_preview = _build_map_preview_for_stops(main_stops, explanation or "")
+    workflow_trace = _build_workflow_trace(planned_route, explanation or "", intent)
+    route_quality = dict(planned_route.get("route_quality", {}) or {})
+    quality_warnings = [str(item) for item in route_quality.get("warnings", []) or []]
+    warnings = list(dict.fromkeys([*_warnings(main_stops, intent), *quality_warnings]))
 
     return RouteResponse(
         title="城市路线",
@@ -438,8 +750,11 @@ def generate_response(
         strategy_type=route_options[0]["strategy_type"] if route_options else None,
         route_score=route_options[0]["route_score"] if route_options else None,
         travel_time_ratio=round(route_stats["total_travel"] / max(route_stats["total_duration"] + route_stats["total_travel"], 1), 3),
-        warnings=_warnings(main_stops, intent),
+        warnings=warnings,
+        workflow_trace=workflow_trace,
         trace={
+            "intent_trace": _intent_trace_summary(intent),
+            "intent_ir": build_intent_ir(intent).model_dump(mode="json"),
             "parse_source": getattr(intent, "parse_source", "local"),
             "recognized_signals": getattr(intent, "recognized_signals", []),
             "unclassified_clues": getattr(intent, "unclassified_clues", []),
@@ -459,6 +774,8 @@ def generate_response(
             "route_stats": route_stats,
             "map_provider": map_preview.get("provider") if isinstance(map_preview, dict) else "local",
             "map_enabled": bool(map_preview.get("enabled")) if isinstance(map_preview, dict) else False,
+            "planning_distance_matrix": planned_route.get("planning_distance_matrix", {}),
+            "route_quality": route_quality,
         },
         diagnostics=diagnostics,
     )
@@ -481,6 +798,63 @@ def generate_clarification_response(
         reason = reason or decision.reason
 
     summary = reason or "当前需求还不够明确，先补一个最关键的问题再继续。"
+    workflow_trace = {
+        "coordinator": {
+            "decision_log": [
+                {
+                    "stage": "understanding",
+                    "action": "ask_clarification",
+                    "reason": summary,
+                },
+                {
+                    "stage": "execution_plan",
+                    "action": "ask_clarification",
+                    "reason": summary,
+                },
+                {
+                    "stage": "clarification",
+                    "action": "ask_clarification",
+                    "reason": summary,
+                },
+            ],
+            "execution_plan": {
+                "required_steps": ["intent", "clarification"],
+                "required_data": [{"name": "intent_schema"}],
+                "optional_data": [],
+                "skipped_tools": [
+                    {"tool": "map_distance_matrix", "reason": "Clarification first."},
+                    {"tool": "ugc_signal", "reason": "Clarification first."},
+                    {"tool": "weather", "reason": "Clarification first."},
+                ],
+                "skipped_data": [
+                    {"tool": "poi_candidates", "reason": "Clarification first."},
+                    {"tool": "profile_memory", "reason": "Clarification first."},
+                    {"tool": "ugc_signals", "reason": "Clarification first."},
+                ],
+            },
+        },
+        "execution_plan": {
+            "required_steps": ["intent", "clarification"],
+            "required_data": [{"name": "intent_schema"}],
+            "optional_data": [],
+            "skipped_tools": [
+                {"tool": "map_distance_matrix", "reason": "Clarification first."},
+                {"tool": "ugc_signal", "reason": "Clarification first."},
+                {"tool": "weather", "reason": "Clarification first."},
+            ],
+            "skipped_data": [
+                {"tool": "poi_candidates", "reason": "Clarification first."},
+                {"tool": "profile_memory", "reason": "Clarification first."},
+                {"tool": "ugc_signals", "reason": "Clarification first."},
+            ],
+        },
+        "stages": [
+            {"stage": "input"},
+            {"stage": "understanding"},
+            {"stage": "execution_plan"},
+            {"stage": "clarification"},
+        ],
+    }
     return RouteResponse(
         intent=intent,
         main_stops=[],
@@ -489,6 +863,7 @@ def generate_clarification_response(
         explanation=summary,
         summary=str(question),
         title="需要补充一点信息",
+        workflow_trace=workflow_trace,
         diagnostics=diagnostics
         or RouteDiagnostics(
             task_hint=RouteTaskHint.ROUTE_MODIFICATION if getattr(intent, "current_route", None) is not None else RouteTaskHint.INTENT_EXTRACTION,
@@ -531,3 +906,18 @@ def generate_route_explanation(intent: ParsedIntent, stops: list[RouteStop]) -> 
         lines.append(f"预计花费：约{total_cost}元")
 
     return "，".join(lines) + "。"
+
+
+def maybe_truncate_route_explanation(explanation: str, query: str | None = None, *, max_length: int | None = None) -> str:
+    """Keep the default route explanation concise."""
+
+    text = (explanation or "").strip()
+    if not text:
+        return ""
+    if max_length is None:
+        max_length = int((ROUTE_POLICY.get("explanation") or {}).get("max_length", 80) or 80)
+    if len(text) <= max_length:
+        return text
+    if max_length <= 1:
+        return text[:max_length]
+    return text[: max_length - 1].rstrip("，,；;。 ") + "…"

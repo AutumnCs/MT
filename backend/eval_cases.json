@@ -411,6 +411,261 @@
     }
   },
   {
+    "id": "workflow_memory_context_enabled",
+    "type": "workflow",
+    "query": "上海周末想喝咖啡，安排轻松一点，预算150。",
+    "city": "上海",
+    "seed_context": {
+      "session_id": "eval-memory-context-enabled",
+      "events": [
+        {
+          "event_type": "route_created",
+          "query": "上海雨天想看展，安静一点，不想排队，预算120。",
+          "intent": {
+            "city": "上海",
+            "required_categories": [
+              "exhibition"
+            ],
+            "preferences": [
+              "quiet",
+              "rainy_day"
+            ],
+            "avoid": [
+              "avoid_queue"
+            ],
+            "pace": "slow",
+            "transport_mode": "metro",
+            "budget": 120
+          }
+        },
+        {
+          "event_type": "route_modified",
+          "query": "还是室内一点，少走路，不排队。",
+          "intent": {
+            "city": "上海",
+            "required_categories": [
+              "exhibition"
+            ],
+            "preferences": [
+              "quiet",
+              "rainy_day"
+            ],
+            "avoid": [
+              "avoid_queue"
+            ],
+            "pace": "slow",
+            "transport_mode": "metro",
+            "budget": 150
+          }
+        }
+      ]
+    },
+    "expect": {
+      "intent_session_id": "eval-memory-context-enabled",
+      "clarification_needed": false,
+      "min_decision_count": 4,
+      "coordinator_stages_include": [
+        "understanding",
+        "execution_plan",
+        "retrieval",
+        "planning",
+        "explanation"
+      ],
+      "enabled_tools_include": [
+        "memory_context",
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "required_data_include": [
+        "intent_schema",
+        "poi_candidates"
+      ],
+      "optional_data_include": [
+        "profile_memory",
+        "semantic_recall",
+        "ugc_signals",
+        "route_distance_matrix"
+      ],
+      "tool_results_include": [
+        "memory_context",
+        "poi_recall",
+        "constraint_filter",
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "tool_status_in": {
+        "memory_context": [
+          "ok"
+        ],
+        "ugc_signal": [
+          "ok"
+        ]
+      },
+      "min_memory_recent_event_count": 2,
+      "min_profile_bias_count": 1
+    }
+  },
+  {
+    "id": "workflow_memory_context_optout",
+    "type": "workflow",
+    "query": "不用参考我的偏好，上海周末想喝咖啡，安排轻松一点，预算150。",
+    "city": "上海",
+    "seed_context": {
+      "session_id": "eval-memory-context-optout",
+      "events": [
+        {
+          "event_type": "route_created",
+          "query": "上海雨天想看展，安静一点，不想排队，预算120。",
+          "intent": {
+            "city": "上海",
+            "required_categories": [
+              "exhibition"
+            ],
+            "preferences": [
+              "quiet",
+              "rainy_day"
+            ],
+            "avoid": [
+              "avoid_queue"
+            ],
+            "pace": "slow",
+            "transport_mode": "metro",
+            "budget": 120
+          }
+        },
+        {
+          "event_type": "route_modified",
+          "query": "还是室内一点，少走路，不排队。",
+          "intent": {
+            "city": "上海",
+            "required_categories": [
+              "exhibition"
+            ],
+            "preferences": [
+              "quiet",
+              "rainy_day"
+            ],
+            "avoid": [
+              "avoid_queue"
+            ],
+            "pace": "slow",
+            "transport_mode": "metro",
+            "budget": 150
+          }
+        }
+      ]
+    },
+    "expect": {
+      "intent_session_id": "eval-memory-context-optout",
+      "clarification_needed": false,
+      "enabled_tools_include": [
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "skipped_tools_include": [
+        "memory_context"
+      ],
+      "skipped_data_include": [
+        "profile_memory"
+      ],
+      "tool_results_include": [
+        "poi_recall",
+        "constraint_filter",
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "tool_results_absent": [
+        "memory_context"
+      ],
+      "intent_profile_bias_absent": true,
+      "intent_context_bias_absent": true
+    }
+  },
+  {
+    "id": "workflow_heat_signal_queue",
+    "type": "workflow",
+    "query": "上海周末想逛逛展和吃点东西，轻松一点，不想排队，别太挤，预算180。",
+    "city": "上海",
+    "expect": {
+      "clarification_needed": false,
+      "enabled_tools_include": [
+        "map_distance_matrix",
+        "ugc_signal",
+        "heat_signal"
+      ],
+      "optional_data_include": [
+        "heat_signals"
+      ],
+      "tool_results_include": [
+        "poi_recall",
+        "constraint_filter",
+        "map_distance_matrix",
+        "heat_signal",
+        "ugc_signal"
+      ],
+      "tool_status_in": {
+        "heat_signal": [
+          "ok"
+        ]
+      },
+      "min_heat_signal_analyzed_count": 2,
+      "max_heat_signal_high_queue_count": 2,
+      "min_route_attempt_count": 1,
+      "accepted_route_attempt_required": true
+    }
+  },
+  {
+    "id": "acceptance_core_route_under_10s",
+    "type": "workflow",
+    "query": "上海周末下午2点到晚上8点，想看展、吃点东西、喝咖啡，路线轻松一点，不想排队，预算200。",
+    "city": "上海",
+    "expect": {
+      "clarification_needed": false,
+      "max_latency_ms": 10000,
+      "max_explanation_length": 80,
+      "min_poi_count": 3,
+      "require_complete_timing": true,
+      "require_route_delta_summary": true,
+      "category_groups_include": {
+        "dining": [
+          "food",
+          "coffee"
+        ],
+        "culture_or_entertainment": [
+          "exhibition",
+          "museum",
+          "scene",
+          "night",
+          "street",
+          "park",
+          "shopping",
+          "library"
+        ]
+      },
+      "enabled_tools_include": [
+        "map_distance_matrix",
+        "ugc_signal",
+        "heat_signal"
+      ],
+      "tool_results_include": [
+        "poi_recall",
+        "constraint_filter",
+        "map_distance_matrix",
+        "heat_signal",
+        "ugc_signal"
+      ],
+      "min_ugc_confidence": 0.9,
+      "ugc_noise_risk_in": [
+        "medium",
+        "low"
+      ],
+      "min_heat_signal_analyzed_count": 3,
+      "max_heat_signal_high_queue_count": 2,
+      "min_route_attempt_count": 1,
+      "accepted_route_attempt_required": true
+    }
+  },
+  {
     "id": "vague_shanghai_quiet_view",
     "type": "intent",
     "query": "上海我也不知道去哪，就想找一个清闲一点、能欣赏景色的地方，别太吵。",
@@ -459,6 +714,616 @@
         "night"
       ],
       "min_poi_count": 1
+    }
+  },
+  {
+    "id": "guangzhou_morning_dim_sum_scenic",
+    "type": "intent",
+    "query": "广州早上想多看点景点，顺便喝个早茶，不要排队，轻松一点。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "food",
+        "quiet"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "required_categories": [
+        "food",
+        "scene"
+      ],
+      "pace": "slow",
+      "min_poi_count": 2,
+      "category_min_counts": {
+        "scene": 2
+      },
+      "category_max_counts": {
+        "food": 1
+      }
+    }
+  },
+  {
+    "id": "guangzhou_premium_date_photo",
+    "type": "intent",
+    "query": "广州想要顶奢一点的约会路线，吃好点，适合拍照，不要给我太便宜的路线。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "premium",
+        "couple",
+        "photo",
+        "food"
+      ],
+      "required_categories": [
+        "food"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_indoor_no_queue_longtail",
+    "type": "intent",
+    "query": "上海今天不想晒，也不想排队，想找点室内但不无聊的地方，顺便喝咖啡。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "indoor",
+        "coffee"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "required_categories": [
+        "coffee"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "shanghai_longtail_relax_exhibition_coffee",
+    "type": "intent",
+    "query": "上海今天有点闷，想找个能坐坐、不无聊、顺便看看展再喝杯咖啡的地方，别太挤。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "quiet",
+        "coffee"
+      ],
+      "avoid": [
+        "crowded"
+      ],
+      "required_categories": [
+        "coffee",
+        "exhibition"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "guangzhou_longtail_night_food_photo",
+    "type": "intent",
+    "query": "广州晚上想找那种能边走边看景、顺手拍点照、再吃口东西的路线，别太绕也别太闷。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "night_view"
+      ],
+      "required_categories": [
+        "night",
+        "food"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "modify_add_morning_tea",
+    "type": "modify",
+    "base_query": "广州上午想看点景点，路线轻松一点，不要太绕。",
+    "modify_query": "加上早茶吧，最好别排队。",
+    "expect": {
+      "preferences": [
+        "food"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "max_total_duration_ratio": 1.4,
+      "max_latency_ms": 10000,
+      "min_poi_count": 3,
+      "require_complete_timing": true,
+      "category_groups_include": {
+        "dining": [
+          "food",
+          "coffee"
+        ],
+        "experience": [
+          "scene",
+          "park",
+          "exhibition",
+          "museum",
+          "street"
+        ]
+      },
+      "min_changed_poi_count": 1
+    }
+  },
+  {
+    "id": "workflow_route_version_persistence",
+    "type": "workflow",
+    "query": "上海周末想多看几个景点文化，再吃点安静的东西，路线轻松一点，别排队。",
+    "city": "上海",
+    "seed_context": {
+      "session_id": "eval-route-version-persistence"
+    },
+    "expect": {
+      "clarification_needed": false,
+      "min_route_version_count": 1,
+      "current_route_version_matches_response": true,
+      "current_route_title_matches_response": true,
+      "current_route_summary_matches_response": true
+    }
+  },
+  {
+    "id": "workflow_session_route_autofill_modify",
+    "type": "workflow",
+    "query": "加上早茶吧，最好别排队。",
+    "city": "广州",
+    "seed_context": {
+      "session_id": "eval-session-route-autofill",
+      "events": [
+        {
+          "event_type": "route_created",
+          "query": "广州上午想看点景点，路线轻松一点，不要太绕。",
+          "intent": {
+            "city": "广州",
+            "required_categories": [
+              "scene"
+            ],
+            "preferences": [
+              "quiet",
+              "relaxed"
+            ],
+            "avoid": [
+              "avoid_queue"
+            ],
+            "pace": "slow",
+            "route_strategy": "compact"
+          },
+          "route_version": {
+            "request_id": "seed-route-autofill-001",
+            "title": "广州上午路线",
+            "summary": "一条轻松逛景点的广州上午路线。",
+            "city": "广州",
+            "intent": {
+              "city": "广州",
+              "required_categories": [
+                "scene"
+              ],
+              "preferences": [
+                "quiet",
+                "relaxed"
+              ],
+              "avoid": [
+                "avoid_queue"
+              ],
+              "pace": "slow",
+              "route_strategy": "compact"
+            },
+            "main_stops": [
+              {
+                "poi_id": "gz-scene-seed-001",
+                "poi": {
+                  "id": "gz-scene-seed-001",
+                  "category": "scene"
+                }
+              },
+              {
+                "poi_id": "gz-scene-seed-002",
+                "poi": {
+                  "id": "gz-scene-seed-002",
+                  "category": "scene"
+                }
+              },
+              {
+                "poi_id": "gz-scene-seed-003",
+                "poi": {
+                  "id": "gz-scene-seed-003",
+                  "category": "scene"
+                }
+              }
+            ],
+            "stops": [
+              {
+                "poi_id": "gz-scene-seed-001",
+                "poi": {
+                  "id": "gz-scene-seed-001",
+                  "category": "scene"
+                }
+              },
+              {
+                "poi_id": "gz-scene-seed-002",
+                "poi": {
+                  "id": "gz-scene-seed-002",
+                  "category": "scene"
+                }
+              },
+              {
+                "poi_id": "gz-scene-seed-003",
+                "poi": {
+                  "id": "gz-scene-seed-003",
+                  "category": "scene"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "expect": {
+      "clarification_needed": false,
+      "min_route_version_count": 1,
+      "min_route_delta_previous_count": 3,
+      "min_changed_poi_count": 1,
+      "require_route_delta_summary": true
+    }
+  },
+  {
+    "id": "guangzhou_scene_tea_break_boundary",
+    "type": "intent",
+    "query": "广州想多看几个景点，顺便喝个早茶，再去一个公园坐坐，别安排太多饭店，轻松一点。",
+    "expect": {
+      "city": "广州",
+      "preferences": [
+        "food",
+        "quiet"
+      ],
+      "required_categories": [
+        "scene",
+        "food"
+      ],
+      "pace": "slow",
+      "min_poi_count": 3,
+      "category_min_counts": {
+        "scene": 2
+      },
+      "category_max_counts": {
+        "food": 1
+      }
+    }
+  },
+  {
+    "id": "shanghai_culture_photo_premium_boundary",
+    "type": "intent",
+    "query": "上海想要偏高端一点的看展拍照路线，最好带点本地味道，但不要太便宜。",
+    "expect": {
+      "city": "上海",
+      "preferences": [
+        "premium",
+        "photo",
+        "culture"
+      ],
+      "required_categories": [
+        "exhibition"
+      ],
+      "min_poi_count": 2
+    }
+  },
+  {
+    "id": "modify_scene_add_tea_break",
+    "type": "modify",
+    "base_query": "广州上午想多看点景点，路线轻松一点，不要太绕。",
+    "modify_query": "顺便加个早茶，别排太久。",
+    "expect": {
+      "preferences": [
+        "food"
+      ],
+      "avoid": [
+        "queue"
+      ],
+      "max_total_duration_ratio": 1.4,
+      "category_min_counts": {
+        "scene": 2
+      },
+      "category_max_counts": {
+        "food": 1
+      }
+    }
+  },
+  {
+    "id": "workflow_guangzhou_night_trace",
+    "type": "workflow",
+    "query": "广州想安排一个夜游路线，想看夜景、拍照、吃饭，预算200，别太绕。",
+    "city": "广州",
+    "expect": {
+      "clarification_needed": false,
+      "min_decision_count": 4,
+      "required_workflow_stages": [
+        "input",
+        "understanding",
+        "execution_plan",
+        "retrieval",
+        "tools",
+        "planning",
+        "critique",
+        "guard",
+        "coordination",
+        "explain"
+      ],
+      "coordinator_stages_include": [
+        "understanding",
+        "execution_plan",
+        "retrieval",
+        "planning",
+        "explanation"
+      ],
+        "coordinator_actions_include": [
+          "continue"
+        ],
+      "min_candidate_count": 20,
+      "min_ranked_count": 20,
+      "required_plan_steps": [
+        "intent",
+        "poi_retrieval",
+        "planning",
+        "validation",
+        "explanation"
+      ],
+      "enabled_tools_include": [
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "skipped_tools_include": [
+        "memory_context",
+        "weather",
+        "heat_signal"
+      ],
+      "required_data_include": [
+        "intent_schema",
+        "poi_candidates"
+      ],
+      "optional_data_include": [
+        "semantic_recall",
+        "ugc_signals",
+        "route_distance_matrix"
+      ],
+      "skipped_data_include": [
+        "profile_memory",
+        "weather_snapshot"
+      ],
+      "tool_results_include": [
+        "poi_recall",
+        "constraint_filter",
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "tool_status_in": {
+        "poi_recall": [
+          "ok"
+        ],
+        "constraint_filter": [
+          "ok"
+        ],
+        "map_distance_matrix": [
+          "ok",
+          "fallback"
+        ],
+        "ugc_signal": [
+          "ok"
+        ]
+      },
+      "min_recall_lane_count": 2,
+      "recall_active_lanes_include": [
+        "bm25",
+        "vector"
+      ],
+      "retrieval_backend_in": [
+        "bm25_plus_dense_hash"
+      ],
+      "dense_backend_in": [
+        "local_hash_dense",
+        "faiss_hash_dense"
+      ],
+      "min_query_alignment_score": 0.05,
+      "min_ugc_analyzed_count": 2,
+      "min_planning_matrix_pair_count": 300,
+      "planning_matrix_source": "local_haversine",
+      "min_route_attempt_count": 1,
+      "accepted_route_attempt_required": true,
+        "quality_status_in": [
+          "needs_repair",
+          "pass"
+      ]
+    }
+  },
+  {
+    "id": "workflow_shanghai_longtail_semantic_trace",
+    "type": "workflow",
+    "query": "上海想安排一条别太公式化的半天路线，能坐坐放空一下，也别完全无聊，最好顺便看看展喝杯咖啡，不想太挤。",
+    "city": "上海",
+    "expect": {
+      "clarification_needed": false,
+      "min_decision_count": 4,
+      "enabled_tools_include": [
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "tool_results_include": [
+        "poi_recall",
+        "constraint_filter",
+        "poi_rerank",
+        "map_distance_matrix",
+        "ugc_signal"
+      ],
+      "min_recall_lane_count": 3,
+      "recall_active_lanes_include": [
+        "bm25",
+        "vector"
+      ],
+      "retrieval_backend_in": [
+        "bm25_plus_dense_hash"
+      ],
+      "dense_backend_in": [
+        "local_hash_dense",
+        "faiss_hash_dense"
+      ],
+      "min_query_alignment_score": 0.08,
+      "min_ugc_analyzed_count": 2,
+      "min_route_attempt_count": 1,
+      "accepted_route_attempt_required": true,
+      "min_poi_count": 3
+    }
+  },
+  {
+    "id": "workflow_vague_query_clarifies",
+    "type": "workflow",
+    "query": "广州随便安排一个。",
+    "city": "广州",
+    "expect": {
+      "clarification_needed": true,
+      "min_decision_count": 2,
+      "coordinator_actions_include": [
+        "ask_clarification"
+      ],
+      "coordinator_stages_include": [
+        "understanding",
+        "execution_plan",
+        "clarification"
+      ],
+      "required_plan_steps": [
+        "intent",
+        "clarification"
+      ],
+      "skipped_tools_include": [
+        "map_distance_matrix",
+        "ugc_signal",
+        "weather"
+      ],
+      "required_data_include": [
+        "intent_schema"
+      ],
+      "skipped_data_include": [
+        "poi_candidates",
+        "profile_memory",
+        "ugc_signals"
+      ]
+    }
+  },
+  {
+    "id": "route_quality_shanghai_indoor_no_queue",
+    "type": "route_quality",
+    "query": "上海雨天想看展喝咖啡，室内为主，不想排队，轻松一点。",
+    "city": "上海",
+    "expect": {
+      "min_alignment_score": 0.6,
+      "max_travel_ratio": 0.2,
+      "min_poi_count": 3,
+      "category_min_counts": {
+        "coffee": 1,
+        "exhibition": 1
+      },
+      "max_warning_count": 2
+    }
+  },
+  {
+    "id": "route_quality_guangzhou_citywalk_local",
+    "type": "route_quality",
+    "query": "广州想逛老城，吃点本地小吃，喝咖啡，适合步行，不要太累。",
+    "city": "广州",
+    "expect": {
+      "min_alignment_score": 0.64,
+      "max_travel_ratio": 0.45,
+      "min_poi_count": 3,
+      "category_min_counts": {
+        "coffee": 1,
+        "food": 1,
+        "street": 1
+      },
+      "max_warning_count": 1
+    }
+  },
+  {
+    "id": "failure_missing_city_requests_clarification",
+    "type": "failure",
+    "query": "随便安排一个。",
+    "expect": {
+      "clarification_needed": true
+    }
+  },
+  {
+    "id": "failure_unsupported_city_blocked",
+    "type": "failure",
+    "query": "北京想看展喝咖啡。",
+    "city": "北京",
+    "expect": {
+      "status_code": 422,
+      "detail_contains": "城市"
+    }
+  },
+  {
+    "id": "intent_repair_patch_budget_queue",
+    "type": "intent_repair",
+    "query": "广州夜游拍照，预算200，不要排队。",
+    "city": "广州",
+    "quality_gaps": [
+      "queue_risk_remains",
+      "budget_overrun"
+    ],
+    "missing_categories": [
+      "food"
+    ],
+    "expect": {
+      "min_patch_count": 4,
+      "patch_fields_include": [
+        "required_categories",
+        "avoid",
+        "preferences",
+        "route_strategy"
+      ],
+      "patch_values_include": [
+        "food",
+        "avoid_queue",
+        "avoid_crowded",
+        "value",
+        "compact"
+      ],
+      "disallowed_patch_fields_absent": [
+        "city",
+        "budget",
+        "start_time",
+        "end_time"
+      ],
+      "repaired_preferences_include": [
+        "value"
+      ],
+      "repaired_avoid_include": [
+        "avoid_queue",
+        "avoid_crowded"
+      ],
+      "route_strategy": "compact"
+    }
+  },
+  {
+    "id": "route_quality_guangzhou_hot_queue_warning",
+    "type": "workflow",
+    "query": "\u5e7f\u5dde\u665a\u4e0a\u60f3\u5403\u996d\u987a\u4fbf\u770b\u591c\u666f\uff0c\u4e0d\u8981\u592a\u62e5\u6324\uff0c\u5c3d\u91cf\u5c11\u6392\u961f\u3002",
+    "city": "\u5e7f\u5dde",
+    "expect": {
+      "clarification_needed": false,
+      "warnings_include": [
+        "\u70ed\u5ea6\u6216\u6392\u961f\u4fe1\u53f7\u504f\u9ad8\uff0c\u5efa\u8bae\u9884\u7559\u7f13\u51b2\u65f6\u95f4\u3002"
+      ],
+      "route_quality_warnings_include": [
+        "\u70ed\u5ea6\u6216\u6392\u961f\u4fe1\u53f7\u504f\u9ad8\uff0c\u5efa\u8bae\u9884\u7559\u7f13\u51b2\u65f6\u95f4\u3002"
+      ],
+      "route_quality_gaps_include": [
+        "heat_signal_hot"
+      ],
+      "min_poi_count": 3,
+      "enabled_tools_include": [
+        "heat_signal",
+        "ugc_signal"
+      ]
     }
   }
 ]

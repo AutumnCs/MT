@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from core import capability_registry
 from core.intent_lexicon import prompt_lexicon_excerpt
+from core.semantic_intent import prompt_semantic_profile_excerpt
 
 
 # ============================================================================
@@ -46,6 +47,8 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = """
   "budget": 预算金额，可为空,
   "required_categories": ["coffee", "food", "library", "exhibition"],
   "preferences": ["couple", "photo", "local_feature"],
+  "party_types": ["couple", "family", "friends", "solo"],
+  "primary_party_type": "couple | family | friends | solo | null",
   "avoid": ["queue", "crowded"],
   "pace": "slow | normal | fast",
   "transport_mode": "walking | metro | taxi | mixed",
@@ -88,6 +91,8 @@ ROUTE_MODIFICATION_SYSTEM_PROMPT = """
   "budget": 预算金额，可为空,
   "required_categories": ["coffee", "food", "library", "exhibition"],
   "preferences": ["couple", "photo", "local_feature"],
+  "party_types": ["couple", "family", "friends", "solo"],
+  "primary_party_type": "couple | family | friends | solo | null",
   "avoid": ["queue", "crowded"],
   "pace": "slow | normal | fast",
   "transport_mode": "walking | metro | taxi | mixed",
@@ -232,19 +237,16 @@ def _format_current_route(current_route: dict | str | None) -> str:
     if not current_route:
         return ""
 
-    # 如果是字符串，直接返回
     if isinstance(current_route, str):
         return current_route
 
     parts: list[str] = []
 
-    # 提取关键信息
     for key in ("title", "summary", "route_explanation"):
         value = current_route.get(key)
         if isinstance(value, str) and value.strip():
             parts.append(f"{key}: {value.strip()}")
 
-    # 提取站点名称
     stops = current_route.get("stops") or []
     stop_names: list[str] = []
     if isinstance(stops, list):
@@ -256,11 +258,19 @@ def _format_current_route(current_route: dict | str | None) -> str:
                     if isinstance(name, str) and name.strip():
                         stop_names.append(name.strip())
 
-    # 格式化为 "站点A -> 站点B -> 站点C" 形式，最多显示6个
     if stop_names:
         parts.append("stops: " + " -> ".join(stop_names[:6]))
 
     return "\n".join(parts)
+
+
+def _append_memory_context(prompt: str, memory_context: str | None) -> str:
+    if not memory_context:
+        return prompt
+    memory_block = memory_context.strip()
+    if not memory_block:
+        return prompt
+    return f"{prompt}\n\nMemory context (soft bias only):\n{memory_block}"
 
 
 # ============================================================================
@@ -281,28 +291,25 @@ def build_user_prompt(query: str, city: str | None = None) -> str:
     return INTENT_EXTRACTION_USER_TEMPLATE.format(query=query or "", city=city or "")
 
 
-def build_intent_extraction_prompt(query: str, city: str | None = None) -> dict[str, str]:
+def build_intent_extraction_prompt(
+    query: str,
+    city: str | None = None,
+    *,
+    memory_context: str | None = None,
+) -> dict[str, str]:
     """
     构建意图提取提示词
-
-    参数：
-        query: 用户输入文本
-        city: 显式城市（可选）
-
-    返回：
-        包含 system_prompt 和 user_prompt 的字典
     """
-    # 替换占位符为实际的词典摘要
     system_prompt = INTENT_EXTRACTION_SYSTEM_PROMPT.replace(
         "[[LEXICON_EXCERPT]]",
         prompt_lexicon_excerpt(),
     )
-    # 添加额外指导：当用户使用词典外的词汇时，映射到最接近的现有标签
+    system_prompt += "\n\nCanonical semantic ontology:\n" + prompt_semantic_profile_excerpt()
     system_prompt += "\n\nAdditional guidance: when the user uses words outside the current lexicon, map them to the closest existing canonical tag first. If you still cannot determine a safe mapping, keep the raw phrase in notes instead of inventing a new tag."
 
     return {
         "system_prompt": system_prompt,
-        "user_prompt": build_user_prompt(query, city),
+        "user_prompt": _append_memory_context(build_user_prompt(query, city), memory_context),
     }
 
 
@@ -312,28 +319,23 @@ def build_route_modification_prompt(
     original_query: str | None = None,
     current_route: dict | str | None = None,
     city: str | None = None,
+    memory_context: str | None = None,
 ) -> dict[str, str]:
     """
     构建路线修改提示词
-
-    参数：
-        query: 修改要求文本
-        original_query: 原始需求文本
-        current_route: 当前路线信息
-        city: 显式城市（可选）
-
-    返回：
-        包含 system_prompt 和 user_prompt 的字典
     """
     system_prompt = ROUTE_MODIFICATION_SYSTEM_PROMPT + "\n\nAdditional guidance: if the user uses new phrasing while modifying a route, still map it to the closest existing change label. When you are not sure, keep the raw wording so we can backfill the lexicon later."
 
     return {
         "system_prompt": system_prompt,
-        "user_prompt": ROUTE_MODIFICATION_USER_TEMPLATE.format(
-            original_query=original_query or "",
-            current_route=_format_current_route(current_route),
-            query=query or "",
-            city=city or "",
+        "user_prompt": _append_memory_context(
+            ROUTE_MODIFICATION_USER_TEMPLATE.format(
+                original_query=original_query or "",
+                current_route=_format_current_route(current_route),
+                query=query or "",
+                city=city or "",
+            ),
+            memory_context,
         ),
     }
 
@@ -344,13 +346,6 @@ def build_route_explanation_prompt(
 ) -> dict[str, str]:
     """
     构建路线解释提示词
-
-    参数：
-        route_summary: 路线摘要
-        intent_summary: 意图摘要（可选）
-
-    返回：
-        包含 system_prompt 和 user_prompt 的字典
     """
     return {
         "system_prompt": ROUTE_EXPLANATION_SYSTEM_PROMPT,
@@ -364,19 +359,11 @@ def build_route_explanation_prompt(
 def build_capability_router_prompt(query: str) -> dict[str, str]:
     """
     构建能力路由提示词
-
-    参数：
-        query: 用户输入文本
-
-    返回：
-        包含 system_prompt 和 user_prompt 的字典
     """
-    # 替换占位符为实际的能力注册表摘要
     system_prompt = CAPABILITY_ROUTER_SYSTEM_PROMPT.replace(
         "[[CAPABILITY_EXCERPT]]",
         capability_registry.prompt_capability_excerpt(),
     )
-    # 添加额外指导：路由到最小且最安全的能力
     system_prompt += (
         "\n\nAdditional guidance: route to the smallest capability that can safely handle the request. "
         "If multiple capabilities seem plausible, prefer the one that changes the least amount of system state. "
@@ -398,54 +385,38 @@ def build_prompt_bundle(
     current_route: dict | str | None = None,
     route_summary: str | None = None,
     intent_summary: str | None = None,
+    memory_context: str | None = None,
 ) -> dict[str, str]:
     """
     根据任务类型构建提示词包
-
-    参数：
-        task: 任务类型（intent_extraction/modify/route_capability/explain）
-        query: 用户输入文本
-        city: 显式城市（可选）
-        original_query: 原始需求（修改时使用）
-        current_route: 当前路线（修改时使用）
-        route_summary: 路线摘要（解释时使用）
-        intent_summary: 意图摘要（解释时使用）
-
-    返回：
-        提示词包字典
     """
     normalized_task = (task or "intent_extraction").strip().lower()
 
-    # 路线修改任务
     if normalized_task in {"modify", "route_modification", "revise"}:
         return build_route_modification_prompt(
             query,
             original_query=original_query,
             current_route=current_route,
             city=city,
+            memory_context=memory_context,
         )
 
-    # 能力路由任务
     if normalized_task in {"route_capability", "capability_router", "skill_router"}:
         return build_capability_router_prompt(query)
 
-    # 路线解释任务
     if normalized_task in {"explain", "route_explanation", "summary"}:
         return build_route_explanation_prompt(route_summary or "", intent_summary)
 
-    # 默认：意图提取任务
-    return build_intent_extraction_prompt(query, city)
+    return build_intent_extraction_prompt(query, city, memory_context=memory_context)
 
 
-def build_intent_prompt(query: str, city: str | None = None) -> dict[str, str]:
+def build_intent_prompt(
+    query: str,
+    city: str | None = None,
+    *,
+    memory_context: str | None = None,
+) -> dict[str, str]:
     """
     向后兼容的意图提示词构建函数
-
-    参数：
-        query: 用户输入文本
-        city: 显式城市（可选）
-
-    返回：
-        提示词包字典
     """
-    return build_intent_extraction_prompt(query, city)
+    return build_intent_extraction_prompt(query, city, memory_context=memory_context)

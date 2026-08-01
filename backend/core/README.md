@@ -14,6 +14,10 @@
 | `llm_intent_client.py` | LLM JSON extraction |
 | `prompt_templates.py` | prompts for extraction, routing, modification, explanation |
 | `intent_lexicon.py` | semantic vocabulary and aliases |
+| `semantic_ontology.py` | canonical category / preference / avoid ontology |
+| `semantic_intent.py` | lightweight semantic hint inference and query surface building |
+| `intent_ir.py` | canonical execution-oriented intent intermediate representation |
+| `text_tokenizer.py` | shared normalization and Chinese tokenization |
 | `capability_registry.py` | capability registry and routing scores |
 | `display_labels.py` | labels shown to users |
 | `route_context.py` | route-level context inference |

@@ -22,14 +22,24 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+from core.route_policy import CATEGORY_TARGETS, EXPERIENCE_CATEGORIES, ROUTE_POLICY, SUPPORT_CATEGORIES
 from core.schemas import POI, ParsedIntent, RouteStop
 from services import map_service
 
 
 # 每公里的默认步行时间（分钟）
 DEFAULT_WALKING_TIME_PER_KM = 12
-BEAM_SIZE = 8
-BEAM_CANDIDATE_LIMIT = 30
+BEAM_SIZE = int(ROUTE_POLICY["planner"]["beam_size"])
+BEAM_CANDIDATE_LIMIT = int(ROUTE_POLICY["planner"]["beam_candidate_limit"])
+
+
+def _planner_limits(intent: ParsedIntent) -> tuple[int, int]:
+    strategy = str(getattr(intent, "route_strategy", "") or "balanced").lower()
+    if strategy == "fast":
+        return 4, 14
+    if strategy == "compact":
+        return 5, 18
+    return BEAM_SIZE, BEAM_CANDIDATE_LIMIT
 
 
 def _time_to_minutes(value: str | int | None) -> int:
@@ -54,6 +64,79 @@ def _time_to_minutes(value: str | int | None) -> int:
     return hour * 60
 
 
+def _minutes_to_time(value: int | float | None) -> str:
+    try:
+        minutes = int(float(value or 0))
+    except (TypeError, ValueError):
+        minutes = 0
+    minutes %= 24 * 60
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def _route_category_counts(route: list[POI]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for poi in route:
+        category = str(getattr(poi, "category", "") or "")
+        if not category:
+            continue
+        counts[category] = counts.get(category, 0) + 1
+    return counts
+
+
+def _effective_category_caps(intent: ParsedIntent) -> dict[str, int]:
+    caps = dict(getattr(intent, "category_caps", {}) or {})
+    categories = set(getattr(intent, "required_categories", []) or []) | set(getattr(intent, "preferred_categories", []) or []) | set(getattr(intent, "preferences", []) or [])
+    if categories & EXPERIENCE_CATEGORIES:
+        for support in SUPPORT_CATEGORIES:
+            if support in categories and support not in caps:
+                caps[support] = int(ROUTE_POLICY["role"]["support_cap"])
+    return caps
+
+
+def _category_min_counts(intent: ParsedIntent) -> dict[str, int]:
+    return dict(getattr(intent, "category_min_counts", {}) or {})
+
+
+def _category_strength(intent: ParsedIntent, category: str) -> float:
+    scores = dict(getattr(intent, "semantic_scores", {}) or {})
+    score = float(scores.get(category, 0.0) or 0.0)
+    if category in (getattr(intent, "required_categories", []) or []):
+        score += 0.12
+    if category in (getattr(intent, "preferences", []) or []):
+        score += 0.06
+    if category in (getattr(intent, "preferred_categories", []) or []):
+        score += 0.04
+    return score
+
+
+def _category_quota_bonus(route: list[POI], poi: POI, intent: ParsedIntent) -> float:
+    counts = _route_category_counts(route)
+    caps = _effective_category_caps(intent)
+    mins = _category_min_counts(intent)
+    category = str(getattr(poi, "category", "") or "")
+    if not category:
+        return 0.0
+    bonus = 0.0
+    if category in mins and counts.get(category, 0) < int(mins.get(category, 0) or 0):
+        bonus += float(ROUTE_POLICY["planner"]["quota_bonus"])
+    if category in caps and counts.get(category, 0) >= int(caps.get(category, 0) or 0):
+        bonus -= float(ROUTE_POLICY["planner"]["quota_penalty"])
+    if category in SUPPORT_CATEGORIES and any(p.category in EXPERIENCE_CATEGORIES for p in route):
+        bonus -= float(ROUTE_POLICY["planner"]["support_decay"]) * counts.get(category, 0)
+    return bonus
+
+
+def _can_add_category(route: list[POI], poi: POI, intent: ParsedIntent) -> bool:
+    category = str(getattr(poi, "category", "") or "")
+    if not category:
+        return True
+    caps = _effective_category_caps(intent)
+    cap = caps.get(category)
+    if cap is None:
+        return True
+    return _route_category_counts(route).get(category, 0) < int(cap)
+
+
 @dataclass
 class _RouteOption:
     """
@@ -67,6 +150,7 @@ class _RouteOption:
 
     stops: list[POI]
     name: str
+    strategy: str = "balanced"
     score: float = 0.0
 
 
@@ -127,8 +211,7 @@ def _simple_estimate_travel_time(poi_a: POI, poi_b: POI) -> int:
     return int(round(dist * DEFAULT_WALKING_TIME_PER_KM))
 
 
-def _estimate_travel_time(poi_a: POI, poi_b: POI, intent: ParsedIntent) -> int:
-    dist = _simple_estimate_distance(poi_a, poi_b)
+def _travel_duration_from_distance(dist: float, intent: ParsedIntent) -> int:
     mode = str(getattr(intent, "transport_mode", "mixed") or "mixed")
     if mode == "walking":
         return int(round(dist * 14))
@@ -139,6 +222,101 @@ def _estimate_travel_time(poi_a: POI, poi_b: POI, intent: ParsedIntent) -> int:
     if dist <= 1.2:
         return int(round(dist * 12))
     return int(round(min(dist * 7 + 12, dist * 4 + 10)))
+
+
+def _matrix_value(intent: ParsedIntent, section: str, poi_a: POI, poi_b: POI) -> float | int | None:
+    matrix = getattr(intent, "planning_distance_matrix", None) or {}
+    if not isinstance(matrix, dict):
+        return None
+    values = matrix.get(section) or {}
+    if not isinstance(values, dict):
+        return None
+    origin = values.get(str(getattr(poi_a, "id", "") or ""))
+    if not isinstance(origin, dict):
+        return None
+    value = origin.get(str(getattr(poi_b, "id", "") or ""))
+    if value is None:
+        return None
+    try:
+        return float(value) if section == "distance_km" else int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _estimate_distance(poi_a: POI, poi_b: POI, intent: ParsedIntent) -> float:
+    value = _matrix_value(intent, "distance_km", poi_a, poi_b)
+    if value is not None:
+        return float(value)
+    return _simple_estimate_distance(poi_a, poi_b)
+
+
+def _estimate_travel_time(poi_a: POI, poi_b: POI, intent: ParsedIntent) -> int:
+    value = _matrix_value(intent, "duration_min", poi_a, poi_b)
+    if value is not None:
+        return int(value)
+    dist = _estimate_distance(poi_a, poi_b, intent)
+    return _travel_duration_from_distance(dist, intent)
+
+
+def _planning_matrix_limit(intent: ParsedIntent) -> int:
+    planner = ROUTE_POLICY.get("planner", {}) if isinstance(ROUTE_POLICY, dict) else {}
+    default_limit = int(planner.get("beam_candidate_limit", BEAM_CANDIDATE_LIMIT) or BEAM_CANDIDATE_LIMIT)
+    limit = int(planner.get("distance_matrix_top_k", default_limit) or default_limit)
+    strategy = str(getattr(intent, "route_strategy", "") or "balanced").lower()
+    if strategy == "fast":
+        limit = min(limit, 18)
+    elif strategy == "compact":
+        limit = min(limit, 24)
+    return max(2, min(limit, 48))
+
+
+def _build_planning_distance_matrix(ranked_pois: list[dict[str, Any]], intent: ParsedIntent) -> dict[str, Any]:
+    limit = _planning_matrix_limit(intent)
+    unique: dict[str, POI] = {}
+    for item in ranked_pois:
+        poi = item.get("poi") if isinstance(item, dict) else None
+        if poi is None or not getattr(poi, "id", None):
+            continue
+        unique.setdefault(str(poi.id), poi)
+        if len(unique) >= limit:
+            break
+    pois = list(unique.values())
+    distances: dict[str, dict[str, float]] = {}
+    durations: dict[str, dict[str, int]] = {}
+    pair_count = 0
+    for origin in pois:
+        origin_id = str(origin.id)
+        distances[origin_id] = {}
+        durations[origin_id] = {}
+        for destination in pois:
+            if origin.id == destination.id:
+                continue
+            distance = round(_simple_estimate_distance(origin, destination), 3)
+            distances[origin_id][str(destination.id)] = distance
+            durations[origin_id][str(destination.id)] = max(1, _travel_duration_from_distance(distance, intent))
+            pair_count += 1
+    return {
+        "provider": "local",
+        "source": "local_haversine",
+        "mode": str(getattr(intent, "transport_mode", "mixed") or "mixed"),
+        "poi_count": len(pois),
+        "pair_count": pair_count,
+        "max_items": limit,
+        "distance_km": distances,
+        "duration_min": durations,
+    }
+
+
+def _planning_distance_matrix_summary(matrix: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": matrix.get("provider"),
+        "source": matrix.get("source"),
+        "mode": matrix.get("mode"),
+        "poi_count": matrix.get("poi_count", 0),
+        "pair_count": matrix.get("pair_count", 0),
+        "max_items": matrix.get("max_items", 0),
+        "used_by": ["beam_search", "route_scoring", "time_scheduling"],
+    }
 
 
 def _transport_distance_score(dist_km: float, intent: ParsedIntent) -> float:
@@ -376,7 +554,7 @@ def _build_route_stops(selected: list[POI], intent: ParsedIntent, amap: bool = F
                 travel_dist = route.distance_km
                 travel_minutes = route.duration_min
             else:
-                travel_dist = _simple_estimate_distance(poi, next_poi)
+                travel_dist = _estimate_distance(poi, next_poi, intent)
                 travel_minutes = _estimate_travel_time(poi, next_poi, intent)
 
         # 计算结束时间 = 当前时间 + 游览时间
@@ -386,6 +564,9 @@ def _build_route_stops(selected: list[POI], intent: ParsedIntent, amap: bool = F
             RouteStop(
                 poi_id=poi.id,
                 poi=poi,
+                arrival_time=_minutes_to_time(current_time),
+                departure_time=_minutes_to_time(end_time),
+                stay_duration=int(poi.visit_duration or 0),
                 start_time=current_time,
                 end_time=end_time,
                 travel_to_next_min=travel_minutes,
@@ -439,6 +620,9 @@ def _build_fallback_route(
     if not ranked_pois:
         return []
 
+    caps = _effective_category_caps(intent)
+    min_counts = _category_min_counts(intent)
+
     # 按类别分组POI
     candidates_by_cat: dict[str, list[dict[str, Any]]] = {}
     for item in ranked_pois:
@@ -479,6 +663,33 @@ def _build_fallback_route(
                 used_ids.add(poi.id)
                 break
 
+    def _append_minimum_category(category: str, minimum: int) -> None:
+        nonlocal anchor_cluster
+        if minimum <= 0:
+            return
+        while _route_category_counts(selected).get(category, 0) < minimum:
+            if max_stops is not None and len(selected) >= max_stops:
+                return
+            items = candidates_by_cat.get(category, [])
+            available_items = [item for item in items if item["poi"].id not in used_ids]
+            if not available_items:
+                return
+            same_cluster = [item for item in available_items if anchor_cluster and _poi_area_cluster(item["poi"]) == anchor_cluster]
+            picked = None
+            for candidate in same_cluster or available_items:
+                if _can_add_category(selected, candidate["poi"], intent):
+                    picked = candidate
+                    break
+            if picked is None:
+                return
+            selected.append(picked["poi"])
+            used_ids.add(picked["poi"].id)
+            if not anchor_cluster:
+                anchor_cluster = _poi_area_cluster(picked["poi"])
+
+    for category, minimum in sorted(min_counts.items(), key=lambda item: (-_category_strength(intent, item[0]), item[0])):
+        _append_minimum_category(category, int(minimum or 0))
+
     for cat in categories:
         if max_stops is not None and len(selected) >= max_stops:
             break
@@ -488,7 +699,13 @@ def _build_fallback_route(
             if not available_items:
                 continue
             same_cluster = [item for item in available_items if anchor_cluster and _poi_area_cluster(item["poi"]) == anchor_cluster]
-            picked = same_cluster[0] if same_cluster else available_items[0]
+            picked = None
+            for candidate in same_cluster or available_items:
+                if _can_add_category(selected, candidate["poi"], intent):
+                    picked = candidate
+                    break
+            if picked is None:
+                continue
             selected.append(picked["poi"])
             used_ids.add(picked["poi"].id)
             if not anchor_cluster:
@@ -502,13 +719,14 @@ def _build_fallback_route(
     def route_state_score(route: list[POI]) -> float:
         if not route:
             return 0.0
-        score = _score_route(route, intent, {item["poi"].id: item for item in ranked_pois})
+        score = _score_route(route, intent, rank_map)
         avg_item_score = sum(float(rank_map.get(p.id, {}).get("final_score", 0.0) or 0.0) for p in route) / max(len(route), 1)
         return 0.65 * score + 0.35 * avg_item_score
 
     rank_map = {item["poi"].id: item for item in ranked_pois}
     beam: list[list[POI]] = [selected]
-    pool = ranked_pois[:BEAM_CANDIDATE_LIMIT]
+    planner_beam_size, planner_candidate_limit = _planner_limits(intent)
+    pool = ranked_pois[:planner_candidate_limit]
 
     while True:
         expanded: list[list[POI]] = []
@@ -524,6 +742,8 @@ def _build_fallback_route(
                 poi = item["poi"]
                 if poi.id in route_ids:
                     continue
+                if not _can_add_category(route, poi, intent):
+                    continue
                 add_travel = _estimate_travel_time(last_poi, poi, intent) if last_poi else 0
                 est_total = current_total + add_travel + int(poi.visit_duration or 0)
                 if est_total > max_total_time * 0.96:
@@ -531,10 +751,11 @@ def _build_fallback_route(
                 candidate = [*route, poi]
                 if getattr(intent, "budget", None) and _route_cost(candidate) > float(intent.budget) * 1.08:
                     continue
-                dist_km = _simple_estimate_distance(last_poi, poi) if last_poi else 0.0
+                dist_km = _estimate_distance(last_poi, poi, intent) if last_poi else 0.0
                 dist_score = _transport_distance_score(dist_km, intent)
-                cluster_score = 1.0 if anchor_cluster and _poi_area_cluster(poi) == anchor_cluster else 0.55
-                item_score = weight_final * float(item["final_score"]) + weight_dist * dist_score + 0.08 * cluster_score
+                cluster_score = float(ROUTE_POLICY["planner"]["cluster_match"]) if anchor_cluster and _poi_area_cluster(poi) == anchor_cluster else float(ROUTE_POLICY["planner"]["cluster_mismatch"])
+                item_score = weight_final * float(item["final_score"]) + weight_dist * dist_score + float(ROUTE_POLICY["planner"]["cluster_bonus"]) * cluster_score
+                item_score += _category_quota_bonus(route, poi, intent)
                 if item_score <= 0:
                     continue
                 expanded.append(candidate)
@@ -546,7 +767,7 @@ def _build_fallback_route(
         for route in expanded:
             key = tuple(p.id for p in route)
             unique.setdefault(key, route)
-        next_beam = sorted(unique.values(), key=route_state_score, reverse=True)[:BEAM_SIZE]
+        next_beam = sorted(unique.values(), key=route_state_score, reverse=True)[:planner_beam_size]
         if {tuple(p.id for p in route) for route in next_beam} == {tuple(p.id for p in route) for route in beam}:
             break
         beam = next_beam
@@ -642,8 +863,11 @@ def _explicit_stage_categories(intent: ParsedIntent) -> set[str]:
     categories = {
         str(category)
         for category in (getattr(intent, "required_categories", []) or [])
-        if category in {"library", "food", "night"}
+        if category in CATEGORY_TARGETS
     }
+    for category in (getattr(intent, "category_min_counts", {}) or {}).keys():
+        if category in CATEGORY_TARGETS:
+            categories.add(str(category))
     stage_to_category = {"library": "library", "food": "food", "night": "night"}
     for stage in getattr(intent, "ordered_stages", []) or []:
         if not isinstance(stage, dict):
@@ -765,7 +989,12 @@ def _make_variant_distinct(
         if alternative:
             route = alternative
 
-    return _RouteOption(stops=route, name=name)
+    strategy = "balanced"
+    if "偏好" in name:
+        strategy = "preference"
+    elif "紧凑" in name:
+        strategy = "compact"
+    return _RouteOption(stops=route, name=name, strategy=strategy)
 
 
 def _optimize_order_by_distance(pois: list[POI]) -> list[POI]:
@@ -866,7 +1095,7 @@ def _apply_ordered_stages(route: list[POI], intent: ParsedIntent) -> list[POI]:
                 current_area = _poi_area_cluster(poi)
                 if previous_area and current_area and previous_area == current_area:
                     score += 0.45
-                distance_km = _simple_estimate_distance(previous, poi)
+                distance_km = _estimate_distance(previous, poi, intent)
                 score += 0.35 * _transport_distance_score(distance_km, intent)
             if kind == "food" and stage.get("position") == "first" and has_later_university_stage:
                 poi_area = " ".join(
@@ -950,6 +1179,16 @@ def _score_route(route: list[POI], intent: ParsedIntent, rank_map: dict[str, dic
     # 4. 类别覆盖（POI类别多样性）
     categories = {p.category for p in route}
     category_score = min(1.0, len(categories) / 4)
+    min_counts = _category_min_counts(intent)
+    caps = _effective_category_caps(intent)
+    category_counts = _route_category_counts(route)
+    quota_penalty = 0.0
+    for category, minimum in min_counts.items():
+        if category_counts.get(category, 0) < int(minimum or 0):
+            quota_penalty += float(ROUTE_POLICY["verification"]["min_gap_penalty"]) * (int(minimum or 0) - category_counts.get(category, 0))
+    for category, cap in caps.items():
+        if category_counts.get(category, 0) > int(cap or 0):
+            quota_penalty += float(ROUTE_POLICY["verification"]["cap_gap_penalty"]) * (category_counts.get(category, 0) - int(cap or 0))
 
     # 5. 夜景POI放晚上（如果有夜景偏好）
     night_score = 0.5
@@ -984,6 +1223,7 @@ def _score_route(route: list[POI], intent: ParsedIntent, rank_map: dict[str, dic
         + 0.05 * cluster_score
         + 0.07 * budget_score
         + 0.07 * open_score
+        - quota_penalty
     )
     return max(0.0, score)
 
@@ -994,6 +1234,18 @@ def _required_category_coverage(route: list[POI], intent: ParsedIntent) -> float
         return 1.0
     present = {poi.category for poi in route}
     return len(required & present) / max(len(required), 1)
+
+
+def _category_min_coverage(route: list[POI], intent: ParsedIntent) -> float:
+    min_counts = _category_min_counts(intent)
+    if not min_counts:
+        return 1.0
+    counts = _route_category_counts(route)
+    satisfied = 0
+    for category, minimum in min_counts.items():
+        if counts.get(category, 0) >= int(minimum or 0):
+            satisfied += 1
+    return satisfied / max(len(min_counts), 1)
 
 
 def _must_include_coverage(route: list[POI], intent: ParsedIntent) -> float:
@@ -1047,11 +1299,18 @@ def plan_route(
         return {"main": [], "variants": []}
 
     # 准备POI ID到排名信息的映射
+    planning_distance_matrix = _build_planning_distance_matrix(ranked_pois, intent)
+    intent.planning_distance_matrix = planning_distance_matrix
+
     rank_map: dict[str, dict[str, Any]] = {item["poi"].id: item for item in ranked_pois}
-    # 确定必要类别
-    categories = intent.required_categories or [
-        item["poi"].category for item in ranked_pois[:5]
-    ]
+    # 确定必要类别，并优先让主目标类别排在前面
+    raw_categories = list(intent.required_categories or [item["poi"].category for item in ranked_pois[:5]])
+    canonical_categories = [cat for cat in raw_categories if cat in CATEGORY_TARGETS]
+    primary_categories = [cat for cat in (getattr(intent, "primary_categories", []) or []) if cat in canonical_categories]
+    side_categories = [cat for cat in (getattr(intent, "side_categories", []) or []) if cat in canonical_categories and cat not in primary_categories]
+    categories = list(
+        dict.fromkeys([*primary_categories, *side_categories, *[cat for cat in canonical_categories if cat not in primary_categories and cat not in side_categories]])
+    )
     max_stops = _max_stops_for_intent(intent)
     modification_exclude_ids = _modification_exclude_ids(intent)
 
@@ -1069,7 +1328,7 @@ def plan_route(
         shuffle=False,
         exclude_ids=modification_exclude_ids,
     )
-    variants.append(_RouteOption(stops=balanced_pois, name="平衡版"))
+    variants.append(_RouteOption(stops=balanced_pois, name="平衡版", strategy="balanced"))
 
     # 变体2：偏好优先版（更看重评分）
     pref_pois = _build_fallback_route(
@@ -1128,10 +1387,22 @@ def plan_route(
         opt.score = _score_route(opt.stops, intent, rank_map)
 
     # 选择得分最高的作为主路线
+    strategy = str(getattr(intent, "route_strategy", "") or "balanced").lower()
     variants.sort(
-        key=lambda x: (_must_include_coverage(x.stops, intent), _required_category_coverage(x.stops, intent), x.score),
+        key=lambda x: (
+            _must_include_coverage(x.stops, intent),
+            _category_min_coverage(x.stops, intent),
+            _required_category_coverage(x.stops, intent),
+            1 if strategy == "compact" and getattr(x, "strategy", "") == "compact" else 0,
+            1 if strategy == "fast" and getattr(x, "strategy", "") in {"balanced", "compact"} else 0,
+            x.score,
+        ),
         reverse=True,
     )
+    if strategy == "fast":
+        variants = variants[:2]
+    elif strategy == "compact":
+        variants = variants[:3]
 
     # 构建最终的时间安排
     main_stops = _build_route_stops(variants[0].stops, intent, amap=amap)
@@ -1152,6 +1423,7 @@ def plan_route(
             "total_travel_min": sum(s.travel_to_next_min for s in main_stops),
             "total_km": sum(s.travel_to_next_km for s in main_stops),
         },
+        "planning_distance_matrix": _planning_distance_matrix_summary(planning_distance_matrix),
     }
 
 

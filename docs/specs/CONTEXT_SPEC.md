@@ -77,6 +77,16 @@ Examples:
 - display labels
 - map facts
 
+## Runtime layers
+
+The memory runtime should stay lightweight but explicitly layered:
+
+- `raw layer`: recent events, recent queries, and recent route versions remain readable for replay and debug.
+- `structured layer`: stable session/profile fields such as city, categories, avoids, pace, transport, and budget are projected into normalized fields.
+- `semantic layer`: stable facts are rendered into compact atomic facts and scene tags so retrieval and prompt injection can stay small.
+
+These layers should not be mixed into one unbounded memory blob.
+
 ## Write rules
 
 - Write session state on every meaningful turn.
@@ -91,6 +101,7 @@ Examples:
 - Read profile only as a soft bias, never as a hard override.
 - Read route versions for modification and explanation.
 - Read recent events for trace/debug and projection.
+- Read semantic memory units only as compact background, and let the current turn override them.
 
 ## Conflict rules
 
@@ -98,12 +109,14 @@ Examples:
 - Recent evidence beats old evidence.
 - Repeated behavior beats single mentions.
 - Session preferences beat long-term defaults.
+- Stable profile and recent session evidence may coexist as pending conflicts instead of forcing an immediate overwrite.
 
 ## Decay rules
 
 - Temporary hints should fade.
 - Weak signals should lose weight over time.
 - Old preferences should not block a new route style.
+- Projection should expose simple decay metadata such as `staleness_days` and `decay_score` instead of hiding freshness inside a black box.
 
 ## What this should power
 
@@ -112,7 +125,7 @@ Examples:
 - user profile projection
 - route replay and rollback
 - personalization for new turns
-- traceable debugging
+- traceable debugging, including workflow-level visibility into memory strength, freshness, and pending conflicts
 
 ## What this should not become
 
